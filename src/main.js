@@ -10,12 +10,20 @@ const searchInput = document.getElementById('search-input');
 const searchBtn = document.getElementById('search-btn');
 const stationsList = document.getElementById('stations-list');
 const stationName = document.getElementById('station-name');
-const stationTags = document.getElementById('station-tags');
 const stationLogo = document.getElementById('station-logo');
+const nowPlayingTrack = document.getElementById('now-playing-track');
+const metaGenre = document.getElementById('meta-genre');
+const metaBitrate = document.getElementById('meta-bitrate');
+const metaCodec = document.getElementById('meta-codec');
+const metaCountry = document.getElementById('meta-country');
 
 // State
 let currentStation = null;
 let isPlaying = false;
+let metadataInterval = null;
+
+// Check if Tauri is available
+const hasTauriApi = typeof window.__TAURI__ !== 'undefined';
 
 // Initialize volume
 audioPlayer.volume = volumeSlider.value / 100;
@@ -94,13 +102,99 @@ function renderStations(stations) {
     });
 }
 
+// Update metadata display
+function updateMetadata(station) {
+    // Genre/tags
+    const tags = station.tags ? station.tags.split(',')[0].trim() : '';
+    if (tags) {
+        metaGenre.textContent = tags;
+        metaGenre.classList.remove('hidden');
+    } else {
+        metaGenre.classList.add('hidden');
+    }
+
+    // Bitrate
+    if (station.bitrate && station.bitrate > 0) {
+        metaBitrate.textContent = station.bitrate + ' kbps';
+        metaBitrate.classList.remove('hidden');
+    } else {
+        metaBitrate.classList.add('hidden');
+    }
+
+    // Codec
+    if (station.codec) {
+        metaCodec.textContent = station.codec;
+        metaCodec.classList.remove('hidden');
+    } else {
+        metaCodec.classList.add('hidden');
+    }
+
+    // Country
+    if (station.country) {
+        metaCountry.textContent = station.country;
+        metaCountry.classList.remove('hidden');
+    } else {
+        metaCountry.classList.add('hidden');
+    }
+}
+
+// Clear metadata display
+function clearMetadata() {
+    metaGenre.classList.add('hidden');
+    metaBitrate.classList.add('hidden');
+    metaCodec.classList.add('hidden');
+    metaCountry.classList.add('hidden');
+    nowPlayingTrack.textContent = '';
+}
+
+// Fetch ICY metadata from Rust backend
+async function fetchStreamMetadata(url) {
+    if (!hasTauriApi) return;
+
+    try {
+        const { invoke } = window.__TAURI__.core;
+        const metadata = await invoke('get_stream_metadata', { url });
+
+        if (metadata && metadata.title) {
+            nowPlayingTrack.textContent = '♪ ' + metadata.title;
+        }
+    } catch (error) {
+        console.error('Metadata fetch error:', error);
+    }
+}
+
+// Start metadata polling
+function startMetadataPolling() {
+    stopMetadataPolling();
+
+    if (currentStation && hasTauriApi) {
+        const streamUrl = currentStation.url_resolved || currentStation.url;
+        fetchStreamMetadata(streamUrl);
+
+        // Poll every 10 seconds
+        metadataInterval = setInterval(() => {
+            if (isPlaying && currentStation) {
+                fetchStreamMetadata(streamUrl);
+            }
+        }, 10000);
+    }
+}
+
+// Stop metadata polling
+function stopMetadataPolling() {
+    if (metadataInterval) {
+        clearInterval(metadataInterval);
+        metadataInterval = null;
+    }
+}
+
 // Select and play station
 function selectStation(station, itemElement) {
     currentStation = station;
 
     // Update UI
     stationName.textContent = station.name;
-    stationTags.textContent = station.tags || '';
+    updateMetadata(station);
 
     if (station.favicon) {
         stationLogo.src = station.favicon;
@@ -127,11 +221,14 @@ function selectStation(station, itemElement) {
 function playStation() {
     if (!currentStation) return;
 
+    nowPlayingTrack.textContent = '';
+
     audioPlayer.src = currentStation.url_resolved || currentStation.url;
     audioPlayer.play()
         .then(() => {
             isPlaying = true;
             updatePlayButton();
+            startMetadataPolling();
         })
         .catch(error => {
             console.error('Play error:', error);
@@ -146,6 +243,8 @@ function stopStation() {
     audioPlayer.src = '';
     isPlaying = false;
     updatePlayButton();
+    stopMetadataPolling();
+    nowPlayingTrack.textContent = '';
 }
 
 // Toggle play/pause
@@ -196,6 +295,24 @@ audioPlayer.addEventListener('error', () => {
     console.error('Audio error');
     isPlaying = false;
     updatePlayButton();
+    stopMetadataPolling();
+});
+
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        const tabId = tab.dataset.tab;
+
+        // Update tab buttons
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        // Update tab content
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.getElementById('tab-' + tabId).classList.add('active');
+    });
 });
 
 // Load popular stations on start

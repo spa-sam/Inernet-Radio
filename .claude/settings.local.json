@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(powershell:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(mkdir:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

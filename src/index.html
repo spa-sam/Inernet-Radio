@@ -8,41 +8,56 @@
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>Internet Radio</h1>
-        </header>
+        <div class="tabs">
+            <button class="tab active" data-tab="radio">Internet Radio</button>
+            <button class="tab" data-tab="settings">Settings</button>
+        </div>
 
-        <div class="player-section">
-            <div class="now-playing">
-                <div class="station-info">
-                    <img id="station-logo" src="" alt="" class="station-logo hidden">
-                    <div class="station-text">
-                        <span id="station-name">Select a station</span>
-                        <span id="station-tags" class="tags"></span>
+        <div class="tab-content active" id="tab-radio">
+            <div class="player-section">
+                <div class="player-main">
+                    <div class="player-left">
+                        <img id="station-logo" src="" alt="" class="station-logo hidden">
+                        <button id="play-btn" class="play-btn" disabled>
+                            <span class="play-icon">▶</span>
+                        </button>
+                    </div>
+                    <div class="player-right">
+                        <div class="station-name-row">
+                            <span id="station-name">Select a station</span>
+                        </div>
+                        <div id="now-playing-track" class="now-playing-track"></div>
+                        <div class="station-meta">
+                            <span id="meta-genre" class="meta-item hidden"></span>
+                            <span id="meta-bitrate" class="meta-item hidden"></span>
+                            <span id="meta-codec" class="meta-item hidden"></span>
+                            <span id="meta-country" class="meta-item hidden"></span>
+                        </div>
+                        <div class="volume-control">
+                            <span class="volume-icon">🔊</span>
+                            <input type="range" id="volume" min="0" max="100" value="70">
+                        </div>
                     </div>
                 </div>
-                <div class="player-controls">
-                    <button id="play-btn" class="play-btn" disabled>
-                        <span class="play-icon">▶</span>
-                    </button>
-                    <div class="volume-control">
-                        <span class="volume-icon">🔊</span>
-                        <input type="range" id="volume" min="0" max="100" value="70">
-                    </div>
+            </div>
+
+            <div class="search-section">
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="Search stations...">
+                    <button id="search-btn">Search</button>
+                </div>
+            </div>
+
+            <div class="stations-section">
+                <div id="stations-list" class="stations-list">
+                    <div class="loading-hint">Search for radio stations above</div>
                 </div>
             </div>
         </div>
 
-        <div class="search-section">
-            <div class="search-box">
-                <input type="text" id="search-input" placeholder="Search stations...">
-                <button id="search-btn">Search</button>
-            </div>
-        </div>
-
-        <div class="stations-section">
-            <div id="stations-list" class="stations-list">
-                <div class="loading-hint">Search for radio stations above</div>
+        <div class="tab-content" id="tab-settings">
+            <div class="settings-placeholder">
+                <p>Settings coming soon...</p>
             </div>
         </div>
 
