@@ -1,0 +1,78 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #fff;
+}
+
+.container {
+    text-align: center;
+    padding: 2rem;
+}
+
+h1 {
+    font-size: 1.5rem;
+    font-weight: 300;
+    margin-bottom: 2rem;
+    color: #a0a0a0;
+}
+
+.counter-display {
+    font-size: 5rem;
+    font-weight: bold;
+    margin-bottom: 2rem;
+    color: #fff;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+}
+
+.buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.btn {
+    width: 60px;
+    height: 60px;
+    border: none;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: bold;
+}
+
+.btn:hover {
+    transform: scale(1.1);
+}
+
+.btn:active {
+    transform: scale(0.95);
+}
+
+.btn-plus {
+    background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+    color: #fff;
+}
+
+.btn-minus {
+    background: linear-gradient(135deg, #e74c3c 0%, #e55039 100%);
+    color: #fff;
+}
+
+.btn-reset {
+    background: linear-gradient(135deg, #636e72 0%, #b2bec3 100%);
+    color: #fff;
+    width: 80px;
+    border-radius: 30px;
+    font-size: 0.9rem;
+}
