@@ -21,6 +21,7 @@ const metaCountry = document.getElementById('meta-country');
 let currentStation = null;
 let isPlaying = false;
 let metadataInterval = null;
+let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
 
 // Check if Tauri is available
 const hasTauriApi = typeof window.__TAURI__ !== 'undefined';
@@ -28,9 +29,10 @@ const hasTauriApi = typeof window.__TAURI__ !== 'undefined';
 // Initialize volume
 audioPlayer.volume = volumeSlider.value / 100;
 
-// Search stations
+// Search stations by name
 async function searchStations(query) {
     stationsList.innerHTML = '<div class="loading">Searching...</div>';
+    clearActivePreset();
 
     try {
         const url = API_BASE + '/stations/byname/' + encodeURIComponent(query) + '?limit=30&order=clickcount&reverse=true';
@@ -47,6 +49,66 @@ async function searchStations(query) {
         console.error('Search error:', error);
         stationsList.innerHTML = '<div class="loading-hint">Error searching stations</div>';
     }
+}
+
+// Search stations by tag/genre
+async function searchByTag(tag) {
+    stationsList.innerHTML = '<div class="loading">Loading ' + tag + ' stations...</div>';
+
+    try {
+        const url = API_BASE + '/stations/bytag/' + encodeURIComponent(tag) + '?limit=30&order=clickcount&reverse=true';
+        const response = await fetch(url);
+        const stations = await response.json();
+
+        if (stations.length === 0) {
+            stationsList.innerHTML = '<div class="loading-hint">No stations found</div>';
+            return;
+        }
+
+        renderStations(stations);
+    } catch (error) {
+        console.error('Search error:', error);
+        stationsList.innerHTML = '<div class="loading-hint">Error searching stations</div>';
+    }
+}
+
+// Clear active preset
+function clearActivePreset() {
+    document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+}
+
+// Check if station is favorite
+function isFavorite(stationuuid) {
+    return favorites.some(fav => fav.stationuuid === stationuuid);
+}
+
+// Toggle favorite
+function toggleFavorite(station, btn) {
+    const index = favorites.findIndex(fav => fav.stationuuid === station.stationuuid);
+
+    if (index === -1) {
+        // Add to favorites
+        favorites.push(station);
+        btn.classList.add('active');
+        btn.textContent = '❤';
+    } else {
+        // Remove from favorites
+        favorites.splice(index, 1);
+        btn.classList.remove('active');
+        btn.textContent = '♡';
+    }
+
+    // Save to localStorage
+    localStorage.setItem('favorites', JSON.stringify(favorites));
+}
+
+// Show favorites
+function showFavorites() {
+    if (favorites.length === 0) {
+        stationsList.innerHTML = '<div class="loading-hint">No favorite stations yet</div>';
+        return;
+    }
+    renderStations(favorites);
 }
 
 // Load popular stations on start
@@ -92,10 +154,25 @@ function renderStations(stations) {
         country.className = 'station-item-country';
         country.textContent = station.country || 'Unknown';
 
+        // Favorite button
+        const favBtn = document.createElement('button');
+        favBtn.className = 'favorite-btn';
+        if (isFavorite(station.stationuuid)) {
+            favBtn.classList.add('active');
+            favBtn.textContent = '❤';
+        } else {
+            favBtn.textContent = '♡';
+        }
+        favBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleFavorite(station, favBtn);
+        });
+
         info.appendChild(name);
         info.appendChild(country);
         item.appendChild(logo);
         item.appendChild(info);
+        item.appendChild(favBtn);
 
         item.addEventListener('click', () => selectStation(station, item));
         stationsList.appendChild(item);
@@ -312,6 +389,24 @@ document.querySelectorAll('.tab').forEach(tab => {
             content.classList.remove('active');
         });
         document.getElementById('tab-' + tabId).classList.add('active');
+    });
+});
+
+// Preset buttons
+document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const genre = btn.dataset.genre;
+
+        // Update active state
+        clearActivePreset();
+        btn.classList.add('active');
+
+        // Handle favorites or search by tag
+        if (genre === 'favorites') {
+            showFavorites();
+        } else {
+            searchByTag(genre);
+        }
     });
 });
 
