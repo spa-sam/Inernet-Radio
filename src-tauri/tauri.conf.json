@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Click Counter",
+  "productName": "Internet Radio",
   "version": "1.0.0",
-  "identifier": "com.clickcounter.counter",
+  "identifier": "com.internetradio.player",
   "build": {
     "frontendDist": "../src"
   },
@@ -10,11 +10,13 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Click Counter",
-        "width": 400,
-        "height": 300,
+        "title": "Internet Radio",
+        "width": 500,
+        "height": 600,
         "resizable": true,
-        "center": true
+        "center": true,
+        "minWidth": 400,
+        "minHeight": 500
       }
     ],
     "security": {

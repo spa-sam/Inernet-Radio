@@ -3,18 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Click Counter</title>
+    <title>Internet Radio</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
-        <h1>Click Counter</h1>
-        <div class="counter-display" id="counter">0</div>
-        <div class="buttons">
-            <button id="decrement" class="btn btn-minus">-</button>
-            <button id="reset" class="btn btn-reset">Reset</button>
-            <button id="increment" class="btn btn-plus">+</button>
+        <header>
+            <h1>Internet Radio</h1>
+        </header>
+
+        <div class="player-section">
+            <div class="now-playing">
+                <div class="station-info">
+                    <img id="station-logo" src="" alt="" class="station-logo hidden">
+                    <div class="station-text">
+                        <span id="station-name">Select a station</span>
+                        <span id="station-tags" class="tags"></span>
+                    </div>
+                </div>
+                <div class="player-controls">
+                    <button id="play-btn" class="play-btn" disabled>
+                        <span class="play-icon">▶</span>
+                    </button>
+                    <div class="volume-control">
+                        <span class="volume-icon">🔊</span>
+                        <input type="range" id="volume" min="0" max="100" value="70">
+                    </div>
+                </div>
+            </div>
         </div>
+
+        <div class="search-section">
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="Search stations...">
+                <button id="search-btn">Search</button>
+            </div>
+        </div>
+
+        <div class="stations-section">
+            <div id="stations-list" class="stations-list">
+                <div class="loading-hint">Search for radio stations above</div>
+            </div>
+        </div>
+
+        <audio id="audio-player"></audio>
     </div>
     <script src="main.js"></script>
 </body>
