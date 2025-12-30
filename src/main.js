@@ -8,6 +8,9 @@ const playIcon = playBtn.querySelector('.play-icon');
 const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 const volumeSlider = document.getElementById('volume');
+const volumeUpBtn = document.getElementById('volume-up');
+const volumeDownBtn = document.getElementById('volume-down');
+const volumeSectionsContainer = document.getElementById('volume-sections');
 const searchInput = document.getElementById('search-input');
 const searchBtn = document.getElementById('search-btn');
 const stationsList = document.getElementById('stations-list');
@@ -78,8 +81,58 @@ function init() {
         visualizerCanvas.classList.add('hidden');
     }
 
+    // Initialize volume sections
+    initVolumeSections();
+    updateVolumeSections(volumeSlider.value);
+
     // Load custom stations
     renderCustomStations();
+}
+
+// Volume sections
+function initVolumeSections() {
+    volumeSectionsContainer.innerHTML = '';
+    for (let i = 1; i <= 10; i++) {
+        const section = document.createElement('div');
+        section.className = 'volume-section';
+        section.dataset.level = i;
+        section.addEventListener('click', () => {
+            setVolume(i * 10);
+        });
+        volumeSectionsContainer.appendChild(section);
+    }
+}
+
+function updateVolumeSections(volume) {
+    const activeLevel = Math.ceil(volume / 10);
+    const sections = volumeSectionsContainer.querySelectorAll('.volume-section');
+
+    sections.forEach((section, index) => {
+        const level = index + 1;
+        // Remove all active classes
+        section.className = 'volume-section';
+
+        if (level <= activeLevel) {
+            section.classList.add('active-' + level);
+        }
+    });
+}
+
+function setVolume(volume) {
+    volume = Math.max(0, Math.min(100, volume));
+    volumeSlider.value = volume;
+    audioPlayer.volume = volume / 100;
+    updateVolumeSections(volume);
+}
+
+function volumeUp() {
+    const currentVolume = parseInt(volumeSlider.value);
+    setVolume(currentVolume + 10);
+}
+
+function volumeDown() {
+    const currentVolume = parseInt(volumeSlider.value);
+    setVolume(currentVolume - 10);
 }
 
 // Search stations by name
@@ -759,8 +812,11 @@ prevBtn.addEventListener('click', prevStation);
 nextBtn.addEventListener('click', nextStation);
 
 volumeSlider.addEventListener('input', (e) => {
-    audioPlayer.volume = e.target.value / 100;
+    setVolume(e.target.value);
 });
+
+volumeUpBtn.addEventListener('click', volumeUp);
+volumeDownBtn.addEventListener('click', volumeDown);
 
 searchBtn.addEventListener('click', () => {
     const query = searchInput.value.trim();

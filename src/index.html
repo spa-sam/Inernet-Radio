@@ -27,7 +27,7 @@
                             <button id="next-btn" class="nav-btn" title="Next">⏭</button>
                         </div>
                     </div>
-                    <div class="player-right">
+                    <div class="player-center">
                         <div class="station-name-row">
                             <span id="station-name">Select a station</span>
                         </div>
@@ -39,10 +39,12 @@
                             <span id="meta-country" class="meta-item hidden"></span>
                         </div>
                         <canvas id="visualizer" class="visualizer"></canvas>
-                        <div class="volume-control">
-                            <span class="volume-icon">🔊</span>
-                            <input type="range" id="volume" min="0" max="100" value="70">
-                        </div>
+                    </div>
+                    <div class="volume-vertical">
+                        <button id="volume-up" class="volume-btn">+</button>
+                        <div id="volume-sections" class="volume-sections"></div>
+                        <button id="volume-down" class="volume-btn">−</button>
+                        <input type="range" id="volume" min="0" max="100" value="70" style="display:none">
                     </div>
                 </div>
             </div>

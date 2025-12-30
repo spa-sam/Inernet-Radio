@@ -69,7 +69,8 @@ body {
     border-radius: 12px;
     padding: 1rem;
     margin-bottom: 1rem;
-    min-height: 150px;
+    height: 200px;
+    flex-shrink: 0;
 }
 
 .player-main {
@@ -115,9 +116,9 @@ body {
 }
 
 .station-logo {
-    width: 50px;
-    height: 50px;
-    border-radius: 8px;
+    width: 80px;
+    height: 80px;
+    border-radius: 10px;
     object-fit: cover;
     background: #2a2a4a;
 }
@@ -126,13 +127,14 @@ body {
     display: none;
 }
 
-.player-right {
+.player-center {
     flex: 1;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
     min-width: 0;
     overflow: hidden;
+    justify-content: flex-start;
 }
 
 .station-name-row {
@@ -152,10 +154,13 @@ body {
 .now-playing-track {
     font-size: 0.9rem;
     color: #00cec9;
-    min-height: 1.4em;
+    height: 1.4em;
     line-height: 1.4;
     user-select: text;
     cursor: text;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .now-playing-track:empty {
@@ -166,7 +171,8 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
-    min-height: 1.4em;
+    height: 1.6em;
+    overflow: hidden;
 }
 
 .meta-item {
@@ -212,7 +218,7 @@ body {
 
 .visualizer {
     width: 100%;
-    height: 30px;
+    height: 80px;
     border-radius: 4px;
     background: rgba(0, 0, 0, 0.2);
 }
@@ -221,33 +227,95 @@ body {
     display: none;
 }
 
-.volume-control {
+/* Vertical Volume Control */
+.volume-vertical {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 32px;
+    flex-shrink: 0;
+    justify-content: flex-end;
+}
+
+.volume-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-top: auto;
+    justify-content: center;
 }
 
-.volume-icon {
-    font-size: 1rem;
+.volume-btn:hover {
+    background: rgba(0, 184, 148, 0.4);
 }
 
-#volume {
+.volume-btn:active {
+    transform: scale(0.95);
+}
+
+.volume-sections {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 2px;
+    height: 80px;
+}
+
+.volume-section {
+    width: 24px;
     flex: 1;
-    height: 5px;
-    -webkit-appearance: none;
-    background: #333;
-    border-radius: 3px;
-    outline: none;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.1);
+    transition: background 0.15s;
+    cursor: pointer;
 }
 
-#volume::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: #00b894;
-    cursor: pointer;
+.volume-section.active-1 {
+    background: #1a472a;
+}
+
+.volume-section.active-2 {
+    background: #226633;
+}
+
+.volume-section.active-3 {
+    background: #2d8a3e;
+}
+
+.volume-section.active-4 {
+    background: #38a94a;
+}
+
+.volume-section.active-5 {
+    background: #45c756;
+}
+
+.volume-section.active-6 {
+    background: #5fd068;
+}
+
+.volume-section.active-7 {
+    background: #8ddb70;
+}
+
+.volume-section.active-8 {
+    background: #c4e84e;
+}
+
+.volume-section.active-9 {
+    background: #e8c84e;
+}
+
+.volume-section.active-10 {
+    background: #e85050;
 }
 
 /* Search Section */
@@ -614,7 +682,25 @@ body {
 }
 
 .container.compact .visualizer {
-    height: 20px;
+    height: 60px;
+}
+
+.container.compact .volume-vertical {
+    width: 24px;
+}
+
+.container.compact .volume-btn {
+    width: 22px;
+    height: 22px;
+    font-size: 0.9rem;
+}
+
+.container.compact .volume-sections {
+    height: 60px;
+}
+
+.container.compact .volume-section {
+    width: 18px;
 }
 
 .container.compact .search-section {
