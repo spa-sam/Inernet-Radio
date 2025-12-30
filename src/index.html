@@ -7,9 +7,10 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
+    <div class="container" id="app-container">
         <div class="tabs">
-            <button class="tab active" data-tab="radio">Internet Radio</button>
+            <button class="tab active" data-tab="radio">Radio</button>
+            <button class="tab" data-tab="custom">Custom</button>
             <button class="tab" data-tab="settings">Settings</button>
         </div>
 
@@ -18,9 +19,13 @@
                 <div class="player-main">
                     <div class="player-left">
                         <img id="station-logo" src="" alt="" class="station-logo hidden">
-                        <button id="play-btn" class="play-btn" disabled>
-                            <span class="play-icon">▶</span>
-                        </button>
+                        <div class="player-controls">
+                            <button id="prev-btn" class="nav-btn" title="Previous">⏮</button>
+                            <button id="play-btn" class="play-btn" disabled>
+                                <span class="play-icon">▶</span>
+                            </button>
+                            <button id="next-btn" class="nav-btn" title="Next">⏭</button>
+                        </div>
                     </div>
                     <div class="player-right">
                         <div class="station-name-row">
@@ -33,6 +38,7 @@
                             <span id="meta-codec" class="meta-item hidden"></span>
                             <span id="meta-country" class="meta-item hidden"></span>
                         </div>
+                        <canvas id="visualizer" class="visualizer"></canvas>
                         <div class="volume-control">
                             <span class="volume-icon">🔊</span>
                             <input type="range" id="volume" min="0" max="100" value="70">
@@ -64,13 +70,56 @@
             </div>
         </div>
 
-        <div class="tab-content" id="tab-settings">
-            <div class="settings-placeholder">
-                <p>Settings coming soon...</p>
+        <div class="tab-content" id="tab-custom">
+            <div class="custom-section">
+                <h3>Add Custom Station</h3>
+                <div class="custom-form">
+                    <input type="text" id="custom-name" placeholder="Station name">
+                    <input type="text" id="custom-url" placeholder="Stream URL (http://...)">
+                    <input type="text" id="custom-genre" placeholder="Genre (optional)">
+                    <button id="add-custom-btn">Add Station</button>
+                </div>
+                <h3>Custom Stations</h3>
+                <div id="custom-stations-list" class="stations-list">
+                    <div class="loading-hint">No custom stations yet</div>
+                </div>
+            </div>
+            <div class="export-section">
+                <h3>Import / Export</h3>
+                <div class="export-buttons">
+                    <button id="export-favorites-btn">Export Favorites</button>
+                    <button id="export-custom-btn">Export Custom</button>
+                    <button id="import-btn">Import Stations</button>
+                    <input type="file" id="import-file" accept=".json" style="display:none">
+                </div>
             </div>
         </div>
 
-        <audio id="audio-player"></audio>
+        <div class="tab-content" id="tab-settings">
+            <div class="settings-section">
+                <h3>Display</h3>
+                <div class="setting-item">
+                    <label>
+                        <input type="checkbox" id="compact-mode">
+                        Compact Mode
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label>
+                        <input type="checkbox" id="visualizer-enabled" checked>
+                        Audio Visualizer
+                    </label>
+                </div>
+                <div class="setting-item color-picker-item">
+                    <label for="visualizer-color">Visualizer Color</label>
+                    <input type="color" id="visualizer-color" value="#00b894">
+                </div>
+                <h3>About</h3>
+                <p class="about-text">Internet Radio Player v1.0<br>Built with Tauri + Rust</p>
+            </div>
+        </div>
+
+        <audio id="audio-player" crossorigin="anonymous"></audio>
     </div>
     <script src="main.js"></script>
 </body>

@@ -3,6 +3,8 @@
   "description": "Default capabilities for the app",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:menu:default",
+    "core:tray:default"
   ]
 }

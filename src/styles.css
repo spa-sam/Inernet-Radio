@@ -84,8 +84,34 @@ body {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    width: 60px;
+    width: 100px;
     flex-shrink: 0;
+}
+
+.player-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.nav-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: #aaa;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-btn:hover {
+    background: rgba(0, 184, 148, 0.3);
+    color: #fff;
 }
 
 .station-logo {
@@ -182,6 +208,17 @@ body {
 
 .play-btn.playing {
     background: linear-gradient(135deg, #e74c3c 0%, #e55039 100%);
+}
+
+.visualizer {
+    width: 100%;
+    height: 30px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.visualizer.hidden {
+    display: none;
 }
 
 .volume-control {
@@ -395,13 +432,197 @@ body {
 }
 
 /* Settings */
-.settings-placeholder {
+.settings-section {
+    padding: 0.5rem;
+}
+
+.settings-section h3 {
+    font-size: 0.9rem;
+    color: #00cec9;
+    margin: 1rem 0 0.5rem 0;
+}
+
+.settings-section h3:first-child {
+    margin-top: 0;
+}
+
+.setting-item {
+    padding: 0.5rem 0;
+}
+
+.setting-item label {
     display: flex;
     align-items: center;
-    justify-content: center;
-    height: 100%;
+    gap: 0.5rem;
+    cursor: pointer;
+    color: #ccc;
+}
+
+.setting-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #00b894;
+}
+
+.color-picker-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.color-picker-item label {
+    flex: none;
+}
+
+.color-picker-item input[type="color"] {
+    width: 40px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    padding: 2px;
+}
+
+.color-picker-item input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.color-picker-item input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 3px;
+}
+
+.about-text {
     color: #666;
-    font-size: 1rem;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+/* Custom Stations */
+.custom-section {
+    padding: 0.5rem;
+}
+
+.custom-section h3 {
+    font-size: 0.9rem;
+    color: #00cec9;
+    margin: 1rem 0 0.5rem 0;
+}
+
+.custom-section h3:first-child {
+    margin-top: 0;
+}
+
+.custom-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.custom-form input {
+    padding: 0.6rem 0.8rem;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 0.9rem;
+}
+
+.custom-form input::placeholder {
+    color: #666;
+}
+
+.custom-form button {
+    padding: 0.6rem;
+    border: none;
+    border-radius: 6px;
+    background: #00b894;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.custom-form button:hover {
+    background: #00a885;
+}
+
+/* Export Section */
+.export-section {
+    padding: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin-top: 1rem;
+}
+
+.export-section h3 {
+    font-size: 0.9rem;
+    color: #00cec9;
+    margin: 0 0 0.5rem 0;
+}
+
+.export-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.export-buttons button {
+    padding: 0.5rem 0.8rem;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ccc;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.export-buttons button:hover {
+    background: rgba(0, 184, 148, 0.3);
+    color: #fff;
+}
+
+/* Compact Mode */
+.container.compact {
+    max-width: 350px;
+}
+
+.container.compact .player-section {
+    min-height: auto;
+    padding: 0.75rem;
+}
+
+.container.compact .station-logo {
+    width: 40px;
+    height: 40px;
+}
+
+.container.compact .play-btn {
+    width: 40px;
+    height: 40px;
+}
+
+.container.compact .nav-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 0.6rem;
+}
+
+.container.compact #station-name {
+    font-size: 0.95rem;
+}
+
+.container.compact .visualizer {
+    height: 20px;
+}
+
+.container.compact .search-section {
+    display: none;
+}
+
+.container.compact .stations-section {
+    max-height: 200px;
 }
 
 /* Scrollbar */
