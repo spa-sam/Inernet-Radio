@@ -43,8 +43,10 @@ const visualizerEnabledCheckbox = document.getElementById('visualizer-enabled');
 const visualizerColorPicker = document.getElementById('visualizer-color');
 const enterCompactBtn = document.getElementById('enter-compact-btn');
 const exitCompactBtn = document.getElementById('exit-compact-btn');
+const alwaysOnTopBtn = document.getElementById('always-on-top-btn');
 
 // State
+let isAlwaysOnTop = false;
 let currentStation = null;
 let isPlaying = false;
 let metadataInterval = null;
@@ -843,6 +845,20 @@ function exitCompactMode() {
     toggleCompactMode(false);
 }
 
+async function toggleAlwaysOnTop() {
+    if (hasTauriApi) {
+        try {
+            const { getCurrentWindow } = window.__TAURI__.window;
+            const appWindow = getCurrentWindow();
+            isAlwaysOnTop = !isAlwaysOnTop;
+            await appWindow.setAlwaysOnTop(isAlwaysOnTop);
+            alwaysOnTopBtn.classList.toggle('active', isAlwaysOnTop);
+        } catch (e) {
+            console.error('Failed to toggle always on top:', e);
+        }
+    }
+}
+
 function toggleVisualizer() {
     settings.visualizerEnabled = visualizerEnabledCheckbox.checked;
     localStorage.setItem('settings', JSON.stringify(settings));
@@ -946,6 +962,7 @@ visualizerEnabledCheckbox.addEventListener('change', toggleVisualizer);
 visualizerColorPicker.addEventListener('input', changeVisualizerColor);
 enterCompactBtn.addEventListener('click', enterCompactMode);
 exitCompactBtn.addEventListener('click', exitCompactMode);
+alwaysOnTopBtn.addEventListener('click', toggleAlwaysOnTop);
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
