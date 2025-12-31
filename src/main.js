@@ -50,13 +50,18 @@ let isAlwaysOnTop = false;
 let currentStation = null;
 let isPlaying = false;
 let metadataInterval = null;
-let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
-let customStations = JSON.parse(localStorage.getItem('customStations') || '[]');
+let favorites = [];
+let customStations = [];
+let blacklist = [];
+let lastStation = null;
 let currentStationsList = [];
 let currentStationIndex = -1;
 
 // Settings state
-let settings = JSON.parse(localStorage.getItem('settings') || '{"compactMode":false,"visualizerEnabled":true,"visualizerColor":"#00b894"}');
+let settings = { compactMode: false, visualizerEnabled: true, visualizerColor: '#00b894' };
+
+// Database
+let db = null;
 
 // Audio visualization
 let audioContext = null;
@@ -68,9 +73,167 @@ let sourceNode = null;
 // Check if Tauri is available
 const hasTauriApi = typeof window.__TAURI__ !== 'undefined';
 
+// Initialize database
+async function initDatabase() {
+    if (!hasTauriApi) return;
+
+    try {
+        // Try different ways to access SQL plugin
+        let Database;
+        if (window.__TAURI_PLUGIN_SQL__) {
+            Database = window.__TAURI_PLUGIN_SQL__.default || window.__TAURI_PLUGIN_SQL__;
+        } else if (window.__TAURI__?.sql) {
+            Database = window.__TAURI__.sql.default || window.__TAURI__.sql.Database || window.__TAURI__.sql;
+        }
+
+        if (!Database) {
+            console.warn('SQL plugin not available, using localStorage fallback');
+            loadFromLocalStorage();
+            return;
+        }
+
+        console.log('Loading database...');
+        db = await Database.load('sqlite:radio.db');
+        console.log('Database loaded successfully');
+
+        // Create tables
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS favorites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stationuuid TEXT UNIQUE NOT NULL,
+                name TEXT,
+                url TEXT,
+                url_resolved TEXT,
+                favicon TEXT,
+                country TEXT,
+                codec TEXT,
+                bitrate INTEGER,
+                tags TEXT,
+                data TEXT
+            )
+        `);
+
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS custom_stations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stationuuid TEXT UNIQUE NOT NULL,
+                name TEXT,
+                url TEXT,
+                genre TEXT,
+                data TEXT
+            )
+        `);
+
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS blacklist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stationuuid TEXT UNIQUE NOT NULL,
+                name TEXT
+            )
+        `);
+
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        `);
+
+        // Load data from database
+        await loadDataFromDb();
+        console.log('Data loaded from database');
+
+    } catch (e) {
+        console.error('Database init error:', e);
+        console.log('Falling back to localStorage');
+        loadFromLocalStorage();
+    }
+}
+
+// Fallback to localStorage if SQL is not available
+function loadFromLocalStorage() {
+    try {
+        favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+        customStations = JSON.parse(localStorage.getItem('customStations') || '[]');
+        blacklist = JSON.parse(localStorage.getItem('blacklist') || '[]');
+        lastStation = JSON.parse(localStorage.getItem('lastStation') || 'null');
+        const savedSettings = JSON.parse(localStorage.getItem('settings') || '{}');
+        settings = { ...settings, ...savedSettings };
+    } catch (e) {
+        console.error('localStorage load error:', e);
+    }
+}
+
+// Load all data from database
+async function loadDataFromDb() {
+    if (!db) return;
+
+    try {
+        // Load favorites
+        const favRows = await db.select('SELECT * FROM favorites');
+        favorites = favRows.map(row => {
+            const station = row.data ? JSON.parse(row.data) : {};
+            return { ...station, stationuuid: row.stationuuid, name: row.name, url: row.url, favicon: row.favicon };
+        });
+
+        // Load custom stations
+        const customRows = await db.select('SELECT * FROM custom_stations');
+        customStations = customRows.map(row => {
+            const station = row.data ? JSON.parse(row.data) : {};
+            return { ...station, stationuuid: row.stationuuid, name: row.name, url: row.url, genre: row.genre };
+        });
+
+        // Load blacklist
+        const blackRows = await db.select('SELECT * FROM blacklist');
+        blacklist = blackRows.map(row => ({ stationuuid: row.stationuuid, name: row.name }));
+
+        // Load settings
+        const settingsRows = await db.select('SELECT * FROM settings');
+        settingsRows.forEach(row => {
+            if (row.key === 'compactMode') settings.compactMode = row.value === 'true';
+            if (row.key === 'visualizerEnabled') settings.visualizerEnabled = row.value === 'true';
+            if (row.key === 'visualizerColor') settings.visualizerColor = row.value;
+            if (row.key === 'lastStation') lastStation = row.value ? JSON.parse(row.value) : null;
+        });
+
+    } catch (e) {
+        console.error('Load data error:', e);
+    }
+}
+
+// Save setting to database and localStorage
+async function saveSetting(key, value) {
+    // Always save to localStorage as backup
+    try {
+        if (key === 'lastStation') {
+            localStorage.setItem('lastStation', JSON.stringify(value));
+        } else {
+            const savedSettings = JSON.parse(localStorage.getItem('settings') || '{}');
+            savedSettings[key] = value;
+            localStorage.setItem('settings', JSON.stringify(savedSettings));
+        }
+    } catch (e) {
+        console.error('localStorage save error:', e);
+    }
+
+    // Save to database if available
+    if (!db) return;
+    try {
+        await db.execute(
+            'INSERT OR REPLACE INTO settings (key, value) VALUES ($1, $2)',
+            [key, typeof value === 'object' ? JSON.stringify(value) : String(value)]
+        );
+    } catch (e) {
+        console.error('Save setting error:', e);
+    }
+}
+
 // Initialize
-function init() {
+async function init() {
     audioPlayer.volume = volumeSlider.value / 100;
+
+    // Initialize database first
+    await initDatabase();
 
     // Apply saved settings
     compactModeCheckbox.checked = settings.compactMode;
@@ -89,6 +252,18 @@ function init() {
     // Initialize volume sections
     initVolumeSections();
     updateVolumeSections(volumeSlider.value);
+
+    // Restore last station UI (without playing)
+    if (lastStation) {
+        currentStation = lastStation;
+        stationName.textContent = lastStation.name;
+        updateMetadata(lastStation);
+        if (lastStation.favicon) {
+            stationLogo.src = lastStation.favicon;
+            stationLogo.classList.remove('hidden');
+            stationLogo.onerror = function() { stationLogo.classList.add('hidden'); };
+        }
+    }
 
     // Load custom stations
     renderCustomStations();
@@ -150,14 +325,15 @@ async function searchStations(query) {
         const response = await fetch(url);
         const stations = await response.json();
 
-        if (stations.length === 0) {
+        const filtered = filterBlacklisted(stations);
+        if (filtered.length === 0) {
             stationsList.innerHTML = '<div class="loading-hint">No stations found</div>';
             currentStationsList = [];
             return;
         }
 
-        currentStationsList = stations;
-        renderStations(stations);
+        currentStationsList = filtered;
+        renderStations(filtered);
     } catch (error) {
         console.error('Search error:', error);
         stationsList.innerHTML = '<div class="loading-hint">Error searching stations</div>';
@@ -173,14 +349,15 @@ async function searchByTag(tag) {
         const response = await fetch(url);
         const stations = await response.json();
 
-        if (stations.length === 0) {
+        const filtered = filterBlacklisted(stations);
+        if (filtered.length === 0) {
             stationsList.innerHTML = '<div class="loading-hint">No stations found</div>';
             currentStationsList = [];
             return;
         }
 
-        currentStationsList = stations;
-        renderStations(stations);
+        currentStationsList = filtered;
+        renderStations(filtered);
     } catch (error) {
         console.error('Search error:', error);
         stationsList.innerHTML = '<div class="loading-hint">Error searching stations</div>';
@@ -198,7 +375,7 @@ function isFavorite(stationuuid) {
 }
 
 // Toggle favorite
-function toggleFavorite(station, btn) {
+async function toggleFavorite(station, btn) {
     const index = favorites.findIndex(fav => fav.stationuuid === station.stationuuid);
 
     if (index === -1) {
@@ -211,7 +388,24 @@ function toggleFavorite(station, btn) {
         btn.textContent = '♡';
     }
 
+    // Save to localStorage as backup
     localStorage.setItem('favorites', JSON.stringify(favorites));
+
+    // Save to database
+    if (db) {
+        try {
+            if (index === -1) {
+                await db.execute(
+                    `INSERT OR REPLACE INTO favorites (stationuuid, name, url, url_resolved, favicon, country, data)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [station.stationuuid, station.name, station.url, station.url_resolved || '',
+                     station.favicon || '', station.country || '', JSON.stringify(station)]
+                );
+            } else {
+                await db.execute('DELETE FROM favorites WHERE stationuuid = $1', [station.stationuuid]);
+            }
+        } catch (e) { console.error('Save favorite error:', e); }
+    }
 }
 
 // Show favorites
@@ -223,6 +417,46 @@ function showFavorites() {
     }
     currentStationsList = favorites;
     renderStations(favorites);
+}
+
+// Check if station is blacklisted
+function isBlacklisted(stationuuid) {
+    return blacklist.some(item => item.stationuuid === stationuuid);
+}
+
+// Add to blacklist
+async function addToBlacklist(station) {
+    if (!isBlacklisted(station.stationuuid)) {
+        blacklist.push({ stationuuid: station.stationuuid, name: station.name });
+        localStorage.setItem('blacklist', JSON.stringify(blacklist));
+        if (db) {
+            try {
+                await db.execute(
+                    'INSERT OR REPLACE INTO blacklist (stationuuid, name) VALUES ($1, $2)',
+                    [station.stationuuid, station.name]
+                );
+            } catch (e) { console.error('Save blacklist error:', e); }
+        }
+    }
+}
+
+// Remove from blacklist
+async function removeFromBlacklist(stationuuid) {
+    const index = blacklist.findIndex(item => item.stationuuid === stationuuid);
+    if (index !== -1) {
+        blacklist.splice(index, 1);
+        localStorage.setItem('blacklist', JSON.stringify(blacklist));
+        if (db) {
+            try {
+                await db.execute('DELETE FROM blacklist WHERE stationuuid = $1', [stationuuid]);
+            } catch (e) { console.error('Delete blacklist error:', e); }
+        }
+    }
+}
+
+// Filter out blacklisted stations
+function filterBlacklisted(stations) {
+    return stations.filter(station => !isBlacklisted(station.stationuuid));
 }
 
 // Load popular stations on start
@@ -284,11 +518,23 @@ function renderStations(stations, container = stationsList) {
             toggleFavorite(station, favBtn);
         });
 
+        // Blacklist button
+        const blacklistBtn = document.createElement('button');
+        blacklistBtn.className = 'blacklist-btn';
+        blacklistBtn.textContent = '🗑';
+        blacklistBtn.title = 'Hide station';
+        blacklistBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            addToBlacklist(station);
+            item.remove();
+        });
+
         info.appendChild(name);
         info.appendChild(country);
         item.appendChild(logo);
         item.appendChild(info);
         item.appendChild(favBtn);
+        item.appendChild(blacklistBtn);
 
         item.addEventListener('click', () => {
             currentStationIndex = index;
@@ -550,6 +796,8 @@ function stopVisualization() {
 // Select and play station
 function selectStation(station, itemElement) {
     currentStation = station;
+    lastStation = station;
+    saveSetting('lastStation', station);
 
     stationName.textContent = station.name;
     updateMetadata(station);
@@ -567,7 +815,6 @@ function selectStation(station, itemElement) {
     });
     itemElement.classList.add('active');
 
-    playBtn.disabled = false;
     playStation();
 }
 
@@ -604,11 +851,20 @@ function stopStation() {
 }
 
 // Toggle play/pause
-function togglePlay() {
+async function togglePlay() {
     if (isPlaying) {
         stopStation();
-    } else {
+    } else if (currentStation) {
         playStation();
+    } else {
+        // No station selected - load popular stations
+        await searchByTag('pop');
+        if (currentStationsList.length > 0) {
+            const firstItem = document.querySelector('.station-item');
+            if (firstItem) {
+                selectStation(currentStationsList[0], firstItem);
+            }
+        }
     }
 }
 
@@ -624,7 +880,7 @@ function updatePlayButton() {
 }
 
 // Custom Stations
-function addCustomStation() {
+async function addCustomStation() {
     const name = customNameInput.value.trim();
     const url = customUrlInput.value.trim();
     const genre = customGenreInput.value.trim();
@@ -649,6 +905,15 @@ function addCustomStation() {
     customStations.push(station);
     localStorage.setItem('customStations', JSON.stringify(customStations));
 
+    if (db) {
+        try {
+            await db.execute(
+                'INSERT OR REPLACE INTO custom_stations (stationuuid, name, url, genre, data) VALUES ($1, $2, $3, $4, $5)',
+                [station.stationuuid, station.name, station.url, genre, JSON.stringify(station)]
+            );
+        } catch (e) { console.error('Save custom station error:', e); }
+    }
+
     customNameInput.value = '';
     customUrlInput.value = '';
     customGenreInput.value = '';
@@ -656,9 +921,14 @@ function addCustomStation() {
     renderCustomStations();
 }
 
-function removeCustomStation(stationuuid) {
+async function removeCustomStation(stationuuid) {
     customStations = customStations.filter(s => s.stationuuid !== stationuuid);
     localStorage.setItem('customStations', JSON.stringify(customStations));
+    if (db) {
+        try {
+            await db.execute('DELETE FROM custom_stations WHERE stationuuid = $1', [stationuuid]);
+        } catch (e) { console.error('Delete custom station error:', e); }
+    }
     renderCustomStations();
 }
 
@@ -782,13 +1052,31 @@ function importStations(event) {
             const isCustom = data.some(s => s.stationuuid && s.stationuuid.startsWith('custom_'));
 
             if (isCustom) {
-                customStations = [...customStations, ...data];
-                localStorage.setItem('customStations', JSON.stringify(customStations));
+                for (const station of data) {
+                    if (!customStations.some(s => s.stationuuid === station.stationuuid)) {
+                        customStations.push(station);
+                        if (db) {
+                            db.execute(
+                                'INSERT OR REPLACE INTO custom_stations (stationuuid, name, url, genre, data) VALUES ($1, $2, $3, $4, $5)',
+                                [station.stationuuid, station.name, station.url, station.tags || '', JSON.stringify(station)]
+                            ).catch(e => console.error('Import custom error:', e));
+                        }
+                    }
+                }
                 renderCustomStations();
                 alert('Custom stations imported successfully');
             } else {
-                favorites = [...favorites, ...data];
-                localStorage.setItem('favorites', JSON.stringify(favorites));
+                for (const station of data) {
+                    if (!favorites.some(f => f.stationuuid === station.stationuuid)) {
+                        favorites.push(station);
+                        if (db) {
+                            db.execute(
+                                'INSERT OR REPLACE INTO favorites (stationuuid, name, url, url_resolved, favicon, country, data) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+                                [station.stationuuid, station.name, station.url, station.url_resolved || '', station.favicon || '', station.country || '', JSON.stringify(station)]
+                            ).catch(e => console.error('Import favorite error:', e));
+                        }
+                    }
+                }
                 alert('Favorites imported successfully');
             }
         } catch (error) {
@@ -808,7 +1096,7 @@ async function toggleCompactMode(forceCompact = null) {
     } else {
         settings.compactMode = compactModeCheckbox.checked;
     }
-    localStorage.setItem('settings', JSON.stringify(settings));
+    saveSetting('compactMode', settings.compactMode);
 
     if (settings.compactMode) {
         appContainer.classList.add('compact');
@@ -861,7 +1149,7 @@ async function toggleAlwaysOnTop() {
 
 function toggleVisualizer() {
     settings.visualizerEnabled = visualizerEnabledCheckbox.checked;
-    localStorage.setItem('settings', JSON.stringify(settings));
+    saveSetting('visualizerEnabled', settings.visualizerEnabled);
 
     if (settings.visualizerEnabled) {
         visualizerCanvas.classList.remove('hidden');
@@ -876,7 +1164,7 @@ function toggleVisualizer() {
 
 function changeVisualizerColor() {
     settings.visualizerColor = visualizerColorPicker.value;
-    localStorage.setItem('settings', JSON.stringify(settings));
+    saveSetting('visualizerColor', settings.visualizerColor);
 }
 
 // Event listeners
