@@ -587,6 +587,27 @@ body {
 }
 
 /* Custom Stations */
+#tab-custom,
+#tab-settings {
+    overflow-y: auto;
+}
+
+#tab-custom::-webkit-scrollbar,
+#tab-settings::-webkit-scrollbar {
+    width: 6px;
+}
+
+#tab-custom::-webkit-scrollbar-track,
+#tab-settings::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#tab-custom::-webkit-scrollbar-thumb,
+#tab-settings::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 3px;
+}
+
 .custom-section {
     padding: 0.5rem;
 }
@@ -599,6 +620,65 @@ body {
 
 .custom-section h3:first-child {
     margin-top: 0;
+}
+
+/* Current Station Info */
+.current-station-info {
+    margin-bottom: 0.5rem;
+}
+
+.current-station-empty {
+    color: #666;
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.current-station-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.current-station-form .current-station-logo {
+    width: 60px;
+    height: 60px;
+    border-radius: 8px;
+    object-fit: cover;
+    align-self: center;
+    background: #2a2a4a;
+}
+
+.current-station-form input {
+    padding: 0.6rem;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    font-size: 0.85rem;
+    cursor: text;
+}
+
+.current-station-form input:focus {
+    outline: none;
+    border-color: #00b894;
+}
+
+.current-station-form .btn-export {
+    padding: 0.6rem;
+    border: none;
+    border-radius: 6px;
+    background: #00b894;
+    color: #fff;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.current-station-form .btn-export:hover {
+    background: #00a885;
 }
 
 .custom-form {
@@ -633,6 +713,25 @@ body {
 
 .custom-form button:hover {
     background: #00a885;
+}
+
+.custom-form-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.custom-form-buttons button {
+    flex: 1;
+}
+
+.custom-form .btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ccc;
+}
+
+.custom-form .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
 }
 
 /* Export Section */

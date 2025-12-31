@@ -29,11 +29,12 @@ const customNameInput = document.getElementById('custom-name');
 const customUrlInput = document.getElementById('custom-url');
 const customGenreInput = document.getElementById('custom-genre');
 const addCustomBtn = document.getElementById('add-custom-btn');
+const previewBtn = document.getElementById('preview-btn');
 const customStationsList = document.getElementById('custom-stations-list');
+const currentStationInfo = document.getElementById('current-station-info');
 
 // Export/Import elements
 const exportFavoritesBtn = document.getElementById('export-favorites-btn');
-const exportCurrentBtn = document.getElementById('export-current-btn');
 const importBtn = document.getElementById('import-btn');
 const importFile = document.getElementById('import-file');
 
@@ -258,10 +259,16 @@ async function init() {
         currentStation = lastStation;
         stationName.textContent = lastStation.name;
         updateMetadata(lastStation);
+        updateCurrentStationInfo();
+        stationLogo.classList.remove('hidden');
         if (lastStation.favicon) {
             stationLogo.src = lastStation.favicon;
-            stationLogo.classList.remove('hidden');
-            stationLogo.onerror = function() { stationLogo.classList.add('hidden'); };
+            stationLogo.onerror = function() {
+                this.src = generatePlaceholderLogo(lastStation.name);
+                this.onerror = null;
+            };
+        } else {
+            stationLogo.src = generatePlaceholderLogo(lastStation.name);
         }
     }
 
@@ -486,12 +493,17 @@ function renderStations(stations, container = stationsList) {
             currentStationIndex = index;
         }
 
-        const logoSrc = station.favicon || '';
-
         const logo = document.createElement('img');
         logo.className = 'station-item-logo';
-        logo.src = logoSrc || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
-        logo.onerror = function() { this.style.display = 'none'; };
+        if (station.favicon) {
+            logo.src = station.favicon;
+            logo.onerror = function() {
+                this.src = generatePlaceholderLogo(station.name);
+                this.onerror = null;
+            };
+        } else {
+            logo.src = generatePlaceholderLogo(station.name);
+        }
 
         const info = document.createElement('div');
         info.className = 'station-item-info';
@@ -801,13 +813,17 @@ function selectStation(station, itemElement) {
 
     stationName.textContent = station.name;
     updateMetadata(station);
+    updateCurrentStationInfo();
 
+    stationLogo.classList.remove('hidden');
     if (station.favicon) {
         stationLogo.src = station.favicon;
-        stationLogo.classList.remove('hidden');
-        stationLogo.onerror = function() { stationLogo.classList.add('hidden'); };
+        stationLogo.onerror = function() {
+            this.src = generatePlaceholderLogo(station.name);
+            this.onerror = null;
+        };
     } else {
-        stationLogo.classList.add('hidden');
+        stationLogo.src = generatePlaceholderLogo(station.name);
     }
 
     document.querySelectorAll('.station-item').forEach(item => {
@@ -848,6 +864,10 @@ function stopStation() {
     stopMetadataPolling();
     stopVisualization();
     nowPlayingTrack.textContent = '';
+    // Reset preview button if exists
+    if (previewBtn) {
+        previewBtn.textContent = 'Preview';
+    }
 }
 
 // Toggle play/pause
@@ -879,6 +899,104 @@ function updatePlayButton() {
     }
 }
 
+// Try to get favicon from domain
+function getFaviconFromUrl(streamUrl) {
+    try {
+        const urlObj = new URL(streamUrl);
+        return `${urlObj.protocol}//${urlObj.hostname}/favicon.ico`;
+    } catch (e) {
+        return '';
+    }
+}
+
+// Generate placeholder logo with first letter
+function generatePlaceholderLogo(name) {
+    const letter = (name || 'R').charAt(0).toUpperCase();
+    // Generate color from name hash
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = Math.abs(hash) % 360;
+    const color = `hsl(${hue}, 60%, 45%)`;
+    const lightColor = `hsl(${hue}, 60%, 65%)`;
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+        <defs>
+            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:${lightColor}"/>
+                <stop offset="100%" style="stop-color:${color}"/>
+            </linearGradient>
+        </defs>
+        <rect width="64" height="64" rx="8" fill="url(#grad)"/>
+        <text x="32" y="42" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">${letter}</text>
+    </svg>`;
+
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
+// Preview custom station URL - toggle play/stop
+function previewCustomUrl() {
+    // If playing preview - stop it
+    if (isPlaying && currentStation && currentStation.stationuuid && currentStation.stationuuid.startsWith('preview_')) {
+        stopStation();
+        previewBtn.textContent = 'Preview';
+        return;
+    }
+
+    const url = customUrlInput.value.trim();
+    if (!url) {
+        alert('Please enter a stream URL');
+        return;
+    }
+
+    const name = customNameInput.value.trim() || 'Preview';
+    const favicon = getFaviconFromUrl(url);
+
+    const tempStation = {
+        stationuuid: 'preview_' + Date.now(),
+        name: name,
+        url: url,
+        url_resolved: url,
+        tags: customGenreInput.value.trim(),
+        country: 'Preview',
+        favicon: favicon
+    };
+
+    currentStation = tempStation;
+    stationName.textContent = name + ' (Preview)';
+
+    // Try to show favicon from domain, fallback to placeholder
+    stationLogo.classList.remove('hidden');
+    if (favicon) {
+        stationLogo.src = favicon;
+        stationLogo.onerror = function() {
+            this.src = generatePlaceholderLogo(name);
+            this.onerror = null;
+        };
+    } else {
+        stationLogo.src = generatePlaceholderLogo(name);
+    }
+
+    updateCurrentStationInfo();
+
+    audioPlayer.src = url;
+    audioPlayer.play()
+        .then(() => {
+            isPlaying = true;
+            updatePlayButton();
+            startVisualization();
+            previewBtn.textContent = 'Stop';
+        })
+        .catch(error => {
+            console.error('Preview error:', error);
+            alert('Cannot play this URL: ' + error.message);
+            isPlaying = false;
+            updatePlayButton();
+            previewBtn.textContent = 'Preview';
+        });
+}
+
 // Custom Stations
 async function addCustomStation() {
     const name = customNameInput.value.trim();
@@ -897,7 +1015,7 @@ async function addCustomStation() {
         url_resolved: url,
         tags: genre,
         country: 'Custom',
-        favicon: '',
+        favicon: getFaviconFromUrl(url),
         bitrate: 0,
         codec: ''
     };
@@ -949,8 +1067,15 @@ function renderCustomStations() {
 
         const logo = document.createElement('img');
         logo.className = 'station-item-logo';
-        logo.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
-        logo.style.display = 'none';
+        if (station.favicon) {
+            logo.src = station.favicon;
+            logo.onerror = function() {
+                this.src = generatePlaceholderLogo(station.name);
+                this.onerror = null;
+            };
+        } else {
+            logo.src = generatePlaceholderLogo(station.name);
+        }
 
         const info = document.createElement('div');
         info.className = 'station-item-info';
@@ -963,8 +1088,16 @@ function renderCustomStations() {
         urlEl.className = 'station-item-country';
         urlEl.textContent = station.url.substring(0, 40) + '...';
 
+        const favoriteBtn = document.createElement('button');
+        favoriteBtn.className = 'favorite-btn' + (isFavorite(station.stationuuid) ? ' active' : '');
+        favoriteBtn.textContent = isFavorite(station.stationuuid) ? '❤' : '♡';
+        favoriteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleFavorite(station, favoriteBtn);
+        });
+
         const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'favorite-btn';
+        deleteBtn.className = 'blacklist-btn';
         deleteBtn.textContent = '✕';
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -975,6 +1108,7 @@ function renderCustomStations() {
         info.appendChild(urlEl);
         item.appendChild(logo);
         item.appendChild(info);
+        item.appendChild(favoriteBtn);
         item.appendChild(deleteBtn);
 
         item.addEventListener('click', () => {
@@ -1032,6 +1166,81 @@ async function exportCurrent() {
         return;
     }
     await exportToJson(currentStationsList, 'radio-stations.json');
+}
+
+// Export current playing station
+async function exportCurrentStation() {
+    if (!currentStation) {
+        alert('No station playing');
+        return;
+    }
+    await exportToJson([currentStation], `${currentStation.name.replace(/[^a-zA-Z0-9]/g, '_')}.json`);
+}
+
+// Update current station info in Custom tab
+function updateCurrentStationInfo() {
+    if (!currentStationInfo) return;
+
+    if (!currentStation) {
+        currentStationInfo.innerHTML = '<div class="current-station-empty">No station playing</div>';
+        return;
+    }
+
+    const s = currentStation;
+    const genre = s.tags ? s.tags.split(',')[0] : '';
+    const logoSrc = s.favicon || generatePlaceholderLogo(s.name);
+    const fallbackLogo = generatePlaceholderLogo(s.name);
+
+    currentStationInfo.innerHTML = `
+        <div class="current-station-form">
+            <img src="${logoSrc}" class="current-station-logo" onerror="this.src='${fallbackLogo}'; this.onerror=null;">
+            <input type="text" value="${s.name}" readonly placeholder="Station name">
+            <input type="text" value="${s.url_resolved || s.url}" readonly placeholder="Stream URL">
+            <input type="text" value="${genre}" readonly placeholder="Genre">
+            <button class="btn-export" onclick="exportCurrentStation()">Export</button>
+        </div>
+    `;
+}
+
+// Add current station to custom stations
+async function addCurrentToCustom() {
+    if (!currentStation) return;
+
+    const s = currentStation;
+    if (customStations.some(cs => cs.url === s.url || cs.stationuuid === s.stationuuid)) {
+        alert('Station already in My Stations');
+        return;
+    }
+
+    const station = {
+        stationuuid: 'custom_' + Date.now(),
+        name: s.name,
+        url: s.url,
+        url_resolved: s.url_resolved || s.url,
+        tags: s.tags || '',
+        country: s.country || 'Custom',
+        favicon: s.favicon || '',
+        bitrate: s.bitrate || 0,
+        codec: s.codec || ''
+    };
+
+    customStations.push(station);
+
+    if (db) {
+        try {
+            await db.execute(
+                'INSERT OR REPLACE INTO custom_stations (stationuuid, name, url, genre, data) VALUES ($1, $2, $3, $4, $5)',
+                [station.stationuuid, station.name, station.url, station.tags, JSON.stringify(station)]
+            );
+        } catch (e) {
+            console.error('Error saving custom station:', e);
+        }
+    }
+    localStorage.setItem('customStations', JSON.stringify(customStations));
+
+    renderCustomStations();
+    updateCurrentStationInfo();
+    alert('Station added to My Stations');
 }
 
 function importStations(event) {
@@ -1237,10 +1446,10 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
 
 // Custom stations
 addCustomBtn.addEventListener('click', addCustomStation);
+previewBtn.addEventListener('click', previewCustomUrl);
 
 // Export/Import
 exportFavoritesBtn.addEventListener('click', exportFavorites);
-exportCurrentBtn.addEventListener('click', exportCurrent);
 importBtn.addEventListener('click', () => importFile.click());
 importFile.addEventListener('change', importStations);
 

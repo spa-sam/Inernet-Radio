@@ -77,14 +77,23 @@
 
         <div class="tab-content" id="tab-custom">
             <div class="custom-section">
+                <h3>Current Station</h3>
+                <div id="current-station-info" class="current-station-info">
+                    <div class="current-station-empty">No station playing</div>
+                </div>
+
                 <h3>Add Custom Station</h3>
                 <div class="custom-form">
                     <input type="text" id="custom-name" placeholder="Station name">
                     <input type="text" id="custom-url" placeholder="Stream URL (http://...)">
                     <input type="text" id="custom-genre" placeholder="Genre (optional)">
-                    <button id="add-custom-btn">Add Station</button>
+                    <div class="custom-form-buttons">
+                        <button id="preview-btn" class="btn-secondary">Preview</button>
+                        <button id="add-custom-btn">Add Station</button>
+                    </div>
                 </div>
-                <h3>Custom Stations</h3>
+
+                <h3>My Stations</h3>
                 <div id="custom-stations-list" class="stations-list">
                     <div class="loading-hint">No custom stations yet</div>
                 </div>
@@ -93,7 +102,6 @@
                 <h3>Import / Export</h3>
                 <div class="export-buttons">
                     <button id="export-favorites-btn">Export Favorites</button>
-                    <button id="export-current-btn">Export Current</button>
                     <button id="import-btn">Import Stations</button>
                     <input type="file" id="import-file" accept=".json" style="display:none">
                 </div>
