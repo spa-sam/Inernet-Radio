@@ -33,7 +33,7 @@ const customStationsList = document.getElementById('custom-stations-list');
 
 // Export/Import elements
 const exportFavoritesBtn = document.getElementById('export-favorites-btn');
-const exportCustomBtn = document.getElementById('export-custom-btn');
+const exportCurrentBtn = document.getElementById('export-current-btn');
 const importBtn = document.getElementById('import-btn');
 const importFile = document.getElementById('import-file');
 
@@ -713,30 +713,50 @@ function renderCustomStations() {
 }
 
 // Export/Import
-function exportToJson(data, filename) {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+async function exportToJson(data, defaultFilename) {
+    if (hasTauriApi) {
+        try {
+            const { save } = window.__TAURI__.dialog;
+            const { writeTextFile } = window.__TAURI__.fs;
+
+            const filePath = await save({
+                defaultPath: defaultFilename,
+                filters: [{ name: 'JSON', extensions: ['json'] }]
+            });
+
+            if (filePath) {
+                await writeTextFile(filePath, JSON.stringify(data, null, 2));
+            }
+        } catch (error) {
+            console.error('Export error:', error);
+            alert('Export error: ' + error.message);
+        }
+    } else {
+        // Fallback for browser
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = defaultFilename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
 }
 
-function exportFavorites() {
+async function exportFavorites() {
     if (favorites.length === 0) {
         alert('No favorites to export');
         return;
     }
-    exportToJson(favorites, 'radio-favorites.json');
+    await exportToJson(favorites, 'radio-favorites.json');
 }
 
-function exportCustom() {
-    if (customStations.length === 0) {
-        alert('No custom stations to export');
+async function exportCurrent() {
+    if (currentStationsList.length === 0) {
+        alert('No stations to export');
         return;
     }
-    exportToJson(customStations, 'radio-custom-stations.json');
+    await exportToJson(currentStationsList, 'radio-stations.json');
 }
 
 function importStations(event) {
@@ -879,7 +899,7 @@ addCustomBtn.addEventListener('click', addCustomStation);
 
 // Export/Import
 exportFavoritesBtn.addEventListener('click', exportFavorites);
-exportCustomBtn.addEventListener('click', exportCustom);
+exportCurrentBtn.addEventListener('click', exportCurrent);
 importBtn.addEventListener('click', () => importFile.click());
 importFile.addEventListener('change', importStations);
 

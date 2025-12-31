@@ -5,6 +5,8 @@
   "permissions": [
     "core:default",
     "core:menu:default",
-    "core:tray:default"
+    "core:tray:default",
+    "dialog:default",
+    "fs:default"
   ]
 }
