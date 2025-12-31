@@ -57,6 +57,7 @@ body {
     flex-direction: column;
     padding: 1rem;
     overflow: hidden;
+    position: relative;
 }
 
 .tab-content.active {
@@ -71,6 +72,7 @@ body {
     margin-bottom: 1rem;
     height: 200px;
     flex-shrink: 0;
+    position: relative;
 }
 
 .player-main {
@@ -653,12 +655,22 @@ body {
 
 /* Compact Mode */
 .container.compact {
-    max-width: 350px;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.container.compact .tab-content {
+    padding: 0;
+    flex: 1;
 }
 
 .container.compact .player-section {
     min-height: auto;
-    padding: 0.75rem;
+    padding: 0.5rem 0.4rem;
+    margin-bottom: 0;
+    border-radius: 0;
+    height: auto;
 }
 
 .container.compact .station-logo {
@@ -687,6 +699,7 @@ body {
 
 .container.compact .volume-vertical {
     width: 24px;
+    margin-right: 0.5rem;
 }
 
 .container.compact .volume-btn {
@@ -703,12 +716,65 @@ body {
     width: 18px;
 }
 
+.container.compact .player-main {
+    gap: 0.5rem;
+}
+
+.container.compact .player-left {
+    width: 80px;
+    margin-left: 0.5rem;
+    margin-right: 0.3rem;
+}
+
 .container.compact .search-section {
     display: none;
 }
 
 .container.compact .stations-section {
-    max-height: 200px;
+    display: none;
+}
+
+.container.compact .tabs {
+    display: none;
+}
+
+/* Compact mode toggle buttons */
+.enter-compact-btn,
+.exit-compact-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #666;
+    font-size: 14px;
+    cursor: pointer;
+    z-index: 100;
+    transition: all 0.2s ease;
+}
+
+.enter-compact-btn:hover,
+.exit-compact-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #aaa;
+}
+
+.exit-compact-btn {
+    display: none;
+}
+
+.container.compact .enter-compact-btn {
+    display: none;
+}
+
+.container.compact .exit-compact-btn {
+    display: flex;
 }
 
 /* Scrollbar */

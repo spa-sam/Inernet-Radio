@@ -41,6 +41,8 @@ const importFile = document.getElementById('import-file');
 const compactModeCheckbox = document.getElementById('compact-mode');
 const visualizerEnabledCheckbox = document.getElementById('visualizer-enabled');
 const visualizerColorPicker = document.getElementById('visualizer-color');
+const enterCompactBtn = document.getElementById('enter-compact-btn');
+const exitCompactBtn = document.getElementById('exit-compact-btn');
 
 // State
 let currentStation = null;
@@ -73,8 +75,9 @@ function init() {
     visualizerEnabledCheckbox.checked = settings.visualizerEnabled;
     visualizerColorPicker.value = settings.visualizerColor || '#00b894';
 
+    // Apply compact mode with window resize
     if (settings.compactMode) {
-        appContainer.classList.add('compact');
+        toggleCompactMode(true);
     }
 
     if (!settings.visualizerEnabled) {
@@ -795,8 +798,14 @@ function importStations(event) {
 }
 
 // Settings
-function toggleCompactMode() {
-    settings.compactMode = compactModeCheckbox.checked;
+async function toggleCompactMode(forceCompact = null) {
+    // If forceCompact is provided, use it; otherwise use checkbox state
+    if (forceCompact !== null) {
+        settings.compactMode = forceCompact;
+        compactModeCheckbox.checked = forceCompact;
+    } else {
+        settings.compactMode = compactModeCheckbox.checked;
+    }
     localStorage.setItem('settings', JSON.stringify(settings));
 
     if (settings.compactMode) {
@@ -804,6 +813,34 @@ function toggleCompactMode() {
     } else {
         appContainer.classList.remove('compact');
     }
+
+    // Resize window via Tauri API
+    if (hasTauriApi) {
+        try {
+            const { getCurrentWindow } = window.__TAURI__.window;
+            const appWindow = getCurrentWindow();
+
+            if (settings.compactMode) {
+                // Compact size - widget-like, fits the player card
+                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(380, 165));
+                await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(350, 155));
+            } else {
+                // Normal size
+                await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(400, 500));
+                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(500, 600));
+            }
+        } catch (e) {
+            console.error('Failed to resize window:', e);
+        }
+    }
+}
+
+function enterCompactMode() {
+    toggleCompactMode(true);
+}
+
+function exitCompactMode() {
+    toggleCompactMode(false);
 }
 
 function toggleVisualizer() {
@@ -904,9 +941,11 @@ importBtn.addEventListener('click', () => importFile.click());
 importFile.addEventListener('change', importStations);
 
 // Settings
-compactModeCheckbox.addEventListener('change', toggleCompactMode);
+compactModeCheckbox.addEventListener('change', () => toggleCompactMode());
 visualizerEnabledCheckbox.addEventListener('change', toggleVisualizer);
 visualizerColorPicker.addEventListener('input', changeVisualizerColor);
+enterCompactBtn.addEventListener('click', enterCompactMode);
+exitCompactBtn.addEventListener('click', exitCompactMode);
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
