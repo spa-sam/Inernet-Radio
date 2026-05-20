@@ -1,38 +1,72 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Internet Radio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container" id="app-container">
+        <!-- Вкладки навігації -->
         <div class="tabs">
-            <button class="tab active" data-tab="radio">Radio</button>
-            <button class="tab" data-tab="custom">Custom</button>
-            <button class="tab" data-tab="settings">Settings</button>
+            <button class="tab active" data-tab="radio">
+                <svg viewBox="0 0 24 24" class="tab-icon"><path d="M20 6H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-8 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm8-6h-2V9h2v2zm-2 4h2v-2h-2v2z" fill="currentColor"/></svg>
+                Радіо
+            </button>
+            <button class="tab" data-tab="custom">
+                <svg viewBox="0 0 24 24" class="tab-icon"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/></svg>
+                Мої станції
+            </button>
+            <button class="tab" data-tab="settings">
+                <svg viewBox="0 0 24 24" class="tab-icon"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></svg>
+                Налаштування
+            </button>
         </div>
 
+        <!-- Вкладка Радіо -->
         <div class="tab-content active" id="tab-radio">
             <div class="player-section">
-                <button id="enter-compact-btn" class="enter-compact-btn" title="Compact mode">⊟</button>
-                <button id="always-on-top-btn" class="always-on-top-btn" title="Always on top">📌</button>
-                <button id="exit-compact-btn" class="exit-compact-btn" title="Exit compact mode">⊞</button>
+                <!-- Панель керування вікном -->
+                <div class="window-controls">
+                    <button id="always-on-top-btn" class="control-circle-btn" title="Закріпити зверху">
+                        <svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" fill="currentColor"/></svg>
+                    </button>
+                    <button id="enter-compact-btn" class="control-circle-btn" title="Компактний режим">
+                        <svg viewBox="0 0 24 24"><path d="M19 19H5V5h14v14zM7 7h10v2H7V7z" fill="currentColor"/></svg>
+                    </button>
+                    <button id="exit-compact-btn" class="control-circle-btn" title="Вийти з компактного режиму">
+                        <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" fill="currentColor"/></svg>
+                    </button>
+                </div>
+
                 <div class="player-main">
                     <div class="player-left">
-                        <img id="station-logo" src="" alt="" class="station-logo hidden">
+                        <div class="station-logo-container">
+                            <img id="station-logo" src="" alt="" class="station-logo hidden">
+                            <div class="station-logo-glow"></div>
+                        </div>
                         <div class="player-controls">
-                            <button id="prev-btn" class="nav-btn" title="Previous">⏮</button>
-                            <button id="play-btn" class="play-btn">
-                                <span class="play-icon">▶</span>
+                            <button id="prev-btn" class="nav-btn" title="Попередня">
+                                <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="currentColor"/></svg>
                             </button>
-                            <button id="next-btn" class="nav-btn" title="Next">⏭</button>
+                            <button id="play-btn" class="play-btn" title="Відтворення/Пауза">
+                                <span class="play-icon">
+                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+                                </span>
+                            </button>
+                            <button id="next-btn" class="nav-btn" title="Наступна">
+                                <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-10 12l8.5-6L6 6z" fill="currentColor"/></svg>
+                            </button>
                         </div>
                     </div>
+                    
                     <div class="player-center">
                         <div class="station-name-row">
-                            <span id="station-name">Select a station</span>
+                            <span id="station-name">Оберіть радіостанцію</span>
                         </div>
                         <div id="now-playing-track" class="now-playing-track"></div>
                         <div class="station-meta">
@@ -41,8 +75,11 @@
                             <span id="meta-codec" class="meta-item hidden"></span>
                             <span id="meta-country" class="meta-item hidden"></span>
                         </div>
+                        <!-- Canvas для еквалайзера -->
                         <canvas id="visualizer" class="visualizer"></canvas>
                     </div>
+
+                    <!-- Вертикальна панель гучності -->
                     <div class="volume-vertical">
                         <button id="volume-up" class="volume-btn">+</button>
                         <div id="volume-sections" class="volume-sections"></div>
@@ -52,13 +89,58 @@
                 </div>
             </div>
 
+            <!-- Секція пошуку з фільтрами -->
             <div class="search-section">
                 <div class="search-box">
-                    <input type="text" id="search-input" placeholder="Search stations...">
-                    <button id="search-btn">Search</button>
+                    <input type="text" id="search-input" placeholder="Пошук радіостанцій...">
+                    <button id="search-btn">Шукати</button>
                 </div>
+                
+                <div class="filters-toggle-row">
+                    <button id="filters-toggle-btn" class="filters-toggle-btn">
+                        <svg viewBox="0 0 24 24" width="14" height="14" class="filter-icon"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" fill="currentColor"/></svg>
+                        Фільтри
+                    </button>
+                </div>
+
+                <div class="filters-panel hidden" id="filters-panel">
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="filter-country">Країна</label>
+                            <select id="filter-country">
+                                <option value="">Усі країни</option>
+                                <option value="Ukraine">Україна</option>
+                                <option value="United States">США</option>
+                                <option value="United Kingdom">Велика Британія</option>
+                                <option value="Germany">Німеччина</option>
+                                <option value="France">Франція</option>
+                                <option value="Poland">Польща</option>
+                                <option value="Italy">Італія</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-bitrate">Якість (Мін. бітрейт)</label>
+                            <select id="filter-bitrate">
+                                <option value="0">Будь-яка</option>
+                                <option value="64">64+ kbps</option>
+                                <option value="128">128+ kbps (HQ)</option>
+                                <option value="192">192+ kbps (VHQ)</option>
+                                <option value="320">320 kbps (Max)</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-codec">Кодек</label>
+                            <select id="filter-codec">
+                                <option value="">Будь-який</option>
+                                <option value="MP3">MP3</option>
+                                <option value="AAC">AAC / AAC+</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="presets">
-                    <button class="preset-btn preset-favorites" data-genre="favorites">★ Favorites</button>
+                    <button class="preset-btn preset-favorites" data-genre="favorites">★ Обрані</button>
                     <button class="preset-btn" data-genre="pop">Pop</button>
                     <button class="preset-btn" data-genre="rock">Rock</button>
                     <button class="preset-btn" data-genre="rap">Rap</button>
@@ -68,72 +150,133 @@
                 </div>
             </div>
 
+            <!-- Нещодавно відтворені станції -->
+            <div class="recently-played-section hidden" id="recently-played-section">
+                <h4>Нещодавно прослухані</h4>
+                <div class="recently-played-list" id="recently-played-list"></div>
+            </div>
+
+            <!-- Список станцій -->
             <div class="stations-section">
                 <div id="stations-list" class="stations-list">
-                    <div class="loading-hint">Search for radio stations above</div>
+                    <div class="loading-hint">Знайдіть радіостанції через пошук вище</div>
                 </div>
             </div>
         </div>
 
+        <!-- Вкладка Мої станції -->
         <div class="tab-content" id="tab-custom">
             <div class="custom-section">
-                <h3>Current Station</h3>
+                <h3>Зараз грає</h3>
                 <div id="current-station-info" class="current-station-info">
-                    <div class="current-station-empty">No station playing</div>
+                    <div class="current-station-empty">Немає активної станції</div>
                 </div>
 
-                <h3>Add Custom Station</h3>
+                <h3>Додати власну станцію</h3>
                 <div class="custom-form">
-                    <input type="text" id="custom-name" placeholder="Station name">
-                    <input type="text" id="custom-url" placeholder="Stream URL (http://...)">
-                    <input type="text" id="custom-genre" placeholder="Genre (optional)">
+                    <input type="text" id="custom-name" placeholder="Назва радіостанції">
+                    <input type="text" id="custom-url" placeholder="URL потоку (http://... або https://...)">
+                    <input type="text" id="custom-genre" placeholder="Жанр (опціонально)">
                     <div class="custom-form-buttons">
-                        <button id="preview-btn" class="btn-secondary">Preview</button>
-                        <button id="add-custom-btn">Add Station</button>
+                        <button id="preview-btn" class="btn-secondary">Прослухати</button>
+                        <button id="add-custom-btn">Додати станцію</button>
                     </div>
                 </div>
 
-                <h3>My Stations</h3>
+                <h3>Мої збережені станції</h3>
                 <div id="custom-stations-list" class="stations-list">
-                    <div class="loading-hint">No custom stations yet</div>
+                    <div class="loading-hint">Власних станцій поки немає</div>
                 </div>
             </div>
+            
             <div class="export-section">
-                <h3>Import / Export</h3>
+                <h3>Імпорт / Експорт</h3>
                 <div class="export-buttons">
-                    <button id="export-favorites-btn">Export Favorites</button>
-                    <button id="import-btn">Import Stations</button>
+                    <button id="export-favorites-btn">Експортувати обрані</button>
+                    <button id="import-btn">Імпортувати станції</button>
                     <input type="file" id="import-file" accept=".json" style="display:none">
                 </div>
             </div>
         </div>
 
+        <!-- Вкладка Налаштування -->
         <div class="tab-content" id="tab-settings">
             <div class="settings-section">
-                <h3>Display</h3>
+                <h3>Відображення</h3>
                 <div class="setting-item">
-                    <label>
+                    <label class="checkbox-container">
                         <input type="checkbox" id="compact-mode">
-                        Compact Mode
+                        <span class="checkmark"></span>
+                        Компактний режим плеєра
                     </label>
                 </div>
                 <div class="setting-item">
-                    <label>
+                    <label class="checkbox-container">
                         <input type="checkbox" id="visualizer-enabled" checked>
-                        Audio Visualizer
+                        <span class="checkmark"></span>
+                        Аудіо-візуалізатор
                     </label>
                 </div>
+                
+                <div class="setting-item flex-between">
+                    <label for="visualizer-style">Режим візуалізації</label>
+                    <select id="visualizer-style" class="custom-select">
+                        <option value="bars">Неонові смуги</option>
+                        <option value="wave">Хвиля-осцилограф</option>
+                        <option value="circle">Круговий еквалайзер</option>
+                    </select>
+                </div>
+
+                <div class="setting-item flex-between">
+                    <label for="visualizer-sensitivity">Чутливість візуалізатора</label>
+                    <input type="range" id="visualizer-sensitivity" min="0.5" max="2" step="0.1" value="1.0" class="custom-slider">
+                </div>
+
                 <div class="setting-item color-picker-item">
-                    <label for="visualizer-color">Visualizer Color</label>
+                    <label for="visualizer-color">Колір еквалайзера</label>
                     <input type="color" id="visualizer-color" value="#00b894">
                 </div>
-                <h3>About</h3>
-                <p class="about-text">Internet Radio Player v1.0<br>Built with Tauri + Rust</p>
+                
+                <h3>Про програму</h3>
+                <p class="about-text">
+                    <strong>Internet Radio Player v2.0</strong><br>
+                    Сучасний радіоплеєр з обходом CORS та підтримкою HTTPS метаданих.<br>
+                    Побудовано на Tauri v2 + Rust + HTML5 Audio.
+                </p>
             </div>
         </div>
 
         <audio id="audio-player" crossorigin="anonymous"></audio>
     </div>
+
+    <!-- Модальне вікно для редагування власних станцій -->
+    <div id="edit-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Редагувати станцію</h3>
+                <span class="close-modal-btn" id="close-modal-btn">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="custom-form">
+                    <input type="hidden" id="edit-station-uuid">
+                    <div class="form-group">
+                        <label for="edit-station-name">Назва</label>
+                        <input type="text" id="edit-station-name" placeholder="Назва радіостанції">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-station-url">URL потоку</label>
+                        <input type="text" id="edit-station-url" placeholder="URL потоку">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-station-genre">Жанр</label>
+                        <input type="text" id="edit-station-genre" placeholder="Жанр (опціонально)">
+                    </div>
+                    <button id="save-edit-btn" class="save-edit-btn">Зберегти зміни</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="main.js"></script>
 </body>
 </html>

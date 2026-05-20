@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-stream-metadata"
+description = "Enables the get_stream_metadata command without any pre-configured scope."
+commands.allow = ["get_stream_metadata"]
+
+[[permission]]
+identifier = "deny-get-stream-metadata"
+description = "Denies the get_stream_metadata command without any pre-configured scope."
+commands.deny = ["get_stream_metadata"]

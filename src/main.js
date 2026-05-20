@@ -24,6 +24,17 @@ const metaCountry = document.getElementById('meta-country');
 const visualizerCanvas = document.getElementById('visualizer');
 const appContainer = document.getElementById('app-container');
 
+// Search Filters Panel elements
+const filtersToggleBtn = document.getElementById('filters-toggle-btn');
+const filtersPanel = document.getElementById('filters-panel');
+const filterCountry = document.getElementById('filter-country');
+const filterBitrate = document.getElementById('filter-bitrate');
+const filterCodec = document.getElementById('filter-codec');
+
+// Recently Played elements
+const recentlyPlayedSection = document.getElementById('recently-played-section');
+const recentlyPlayedList = document.getElementById('recently-played-list');
+
 // Custom stations elements
 const customNameInput = document.getElementById('custom-name');
 const customUrlInput = document.getElementById('custom-url');
@@ -33,6 +44,15 @@ const previewBtn = document.getElementById('preview-btn');
 const customStationsList = document.getElementById('custom-stations-list');
 const currentStationInfo = document.getElementById('current-station-info');
 
+// Edit Station Modal elements
+const editModal = document.getElementById('edit-modal');
+const closeModalBtn = document.getElementById('close-modal-btn');
+const saveEditBtn = document.getElementById('save-edit-btn');
+const editStationUuidInput = document.getElementById('edit-station-uuid');
+const editStationNameInput = document.getElementById('edit-station-name');
+const editStationUrlInput = document.getElementById('edit-station-url');
+const editStationGenreInput = document.getElementById('edit-station-genre');
+
 // Export/Import elements
 const exportFavoritesBtn = document.getElementById('export-favorites-btn');
 const importBtn = document.getElementById('import-btn');
@@ -41,6 +61,8 @@ const importFile = document.getElementById('import-file');
 // Settings elements
 const compactModeCheckbox = document.getElementById('compact-mode');
 const visualizerEnabledCheckbox = document.getElementById('visualizer-enabled');
+const visualizerStyleSelect = document.getElementById('visualizer-style');
+const visualizerSensitivityInput = document.getElementById('visualizer-sensitivity');
 const visualizerColorPicker = document.getElementById('visualizer-color');
 const enterCompactBtn = document.getElementById('enter-compact-btn');
 const exitCompactBtn = document.getElementById('exit-compact-btn');
@@ -54,12 +76,22 @@ let metadataInterval = null;
 let favorites = [];
 let customStations = [];
 let blacklist = [];
+let recentlyPlayed = [];
 let lastStation = null;
 let currentStationsList = [];
 let currentStationIndex = -1;
 
 // Settings state
-let settings = { compactMode: false, visualizerEnabled: true, visualizerColor: '#00b894' };
+let settings = { 
+    compactMode: false, 
+    visualizerEnabled: true, 
+    visualizerColor: '#00b894',
+    visualizerStyle: 'bars',
+    visualizerSensitivity: 1.0
+};
+
+// Proxy Port (loaded from backend)
+let proxyPort = 0;
 
 // Database
 let db = null;
@@ -70,6 +102,8 @@ let analyser = null;
 let dataArray = null;
 let animationId = null;
 let sourceNode = null;
+let smoothedData = null;
+let lastTrackTitle = '';
 
 // Check if Tauri is available
 const hasTauriApi = typeof window.__TAURI__ !== 'undefined';
@@ -79,7 +113,6 @@ async function initDatabase() {
     if (!hasTauriApi) return;
 
     try {
-        // Try different ways to access SQL plugin
         let Database;
         if (window.__TAURI_PLUGIN_SQL__) {
             Database = window.__TAURI_PLUGIN_SQL__.default || window.__TAURI_PLUGIN_SQL__;
@@ -134,6 +167,17 @@ async function initDatabase() {
         `);
 
         await db.execute(`
+            CREATE TABLE IF NOT EXISTS recently_played (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stationuuid TEXT UNIQUE NOT NULL,
+                name TEXT,
+                url TEXT,
+                favicon TEXT,
+                timestamp INTEGER
+            )
+        `);
+
+        await db.execute(`
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT
@@ -157,6 +201,7 @@ function loadFromLocalStorage() {
         favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
         customStations = JSON.parse(localStorage.getItem('customStations') || '[]');
         blacklist = JSON.parse(localStorage.getItem('blacklist') || '[]');
+        recentlyPlayed = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
         lastStation = JSON.parse(localStorage.getItem('lastStation') || 'null');
         const savedSettings = JSON.parse(localStorage.getItem('settings') || '{}');
         settings = { ...settings, ...savedSettings };
@@ -188,12 +233,24 @@ async function loadDataFromDb() {
         const blackRows = await db.select('SELECT * FROM blacklist');
         blacklist = blackRows.map(row => ({ stationuuid: row.stationuuid, name: row.name }));
 
+        // Load recently played
+        const recentRows = await db.select('SELECT * FROM recently_played ORDER BY timestamp DESC LIMIT 10');
+        recentlyPlayed = recentRows.map(row => ({
+            stationuuid: row.stationuuid,
+            name: row.name,
+            url: row.url,
+            favicon: row.favicon,
+            country: 'Нещодавно прослухані'
+        }));
+
         // Load settings
         const settingsRows = await db.select('SELECT * FROM settings');
         settingsRows.forEach(row => {
             if (row.key === 'compactMode') settings.compactMode = row.value === 'true';
             if (row.key === 'visualizerEnabled') settings.visualizerEnabled = row.value === 'true';
             if (row.key === 'visualizerColor') settings.visualizerColor = row.value;
+            if (row.key === 'visualizerStyle') settings.visualizerStyle = row.value;
+            if (row.key === 'visualizerSensitivity') settings.visualizerSensitivity = parseFloat(row.value);
             if (row.key === 'lastStation') lastStation = row.value ? JSON.parse(row.value) : null;
         });
 
@@ -204,7 +261,6 @@ async function loadDataFromDb() {
 
 // Save setting to database and localStorage
 async function saveSetting(key, value) {
-    // Always save to localStorage as backup
     try {
         if (key === 'lastStation') {
             localStorage.setItem('lastStation', JSON.stringify(value));
@@ -217,7 +273,6 @@ async function saveSetting(key, value) {
         console.error('localStorage save error:', e);
     }
 
-    // Save to database if available
     if (!db) return;
     try {
         await db.execute(
@@ -229,16 +284,47 @@ async function saveSetting(key, value) {
     }
 }
 
+// Fetch proxy port from Rust backend
+async function initProxy() {
+    if (!hasTauriApi) return;
+    try {
+        const { invoke } = window.__TAURI__.core;
+        proxyPort = await invoke('get_proxy_port');
+        console.log('CORS Proxy server running on port:', proxyPort);
+    } catch (e) {
+        console.error('Failed to load proxy port:', e);
+    }
+}
+
+// Helper to get proxied stream URL for bypassing CORS
+function getProxiedUrl(originalUrl) {
+    if (proxyPort > 0 && originalUrl && (originalUrl.startsWith('http://') || originalUrl.startsWith('https://'))) {
+        if (originalUrl.includes('localhost') || originalUrl.includes('127.0.0.1')) {
+            return originalUrl;
+        }
+        return `http://127.0.0.1:${proxyPort}/stream?url=${encodeURIComponent(originalUrl)}`;
+    }
+    return originalUrl;
+}
+
 // Initialize
 async function init() {
     audioPlayer.volume = volumeSlider.value / 100;
 
-    // Initialize database first
+    // Load proxy port first
+    await initProxy();
+
+    // Initialize database
     await initDatabase();
+
+    // Request notification permission
+    requestNotificationPermission();
 
     // Apply saved settings
     compactModeCheckbox.checked = settings.compactMode;
     visualizerEnabledCheckbox.checked = settings.visualizerEnabled;
+    visualizerStyleSelect.value = settings.visualizerStyle || 'bars';
+    visualizerSensitivityInput.value = settings.visualizerSensitivity || 1.0;
     visualizerColorPicker.value = settings.visualizerColor || '#00b894';
 
     // Apply compact mode with window resize
@@ -253,6 +339,9 @@ async function init() {
     // Initialize volume sections
     initVolumeSections();
     updateVolumeSections(volumeSlider.value);
+
+    // Render recently played
+    renderRecentlyPlayed();
 
     // Restore last station UI (without playing)
     if (lastStation) {
@@ -296,7 +385,6 @@ function updateVolumeSections(volume) {
 
     sections.forEach((section, index) => {
         const level = index + 1;
-        // Remove all active classes
         section.className = 'volume-section';
 
         if (level <= activeLevel) {
@@ -322,19 +410,29 @@ function volumeDown() {
     setVolume(currentVolume - 10);
 }
 
-// Search stations by name
-async function searchStations(query) {
-    stationsList.innerHTML = '<div class="loading">Searching...</div>';
+// Search stations by name and filters
+async function searchStations(query, tag = '') {
+    stationsList.innerHTML = '<div class="loading">Пошук...</div>';
     clearActivePreset();
 
+    const countryVal = filterCountry.value;
+    const bitrateVal = filterBitrate.value;
+    const codecVal = filterCodec.value;
+
+    let url = `${API_BASE}/stations/search?limit=30&order=clickcount&reverse=true`;
+    if (query) url += `&name=${encodeURIComponent(query)}`;
+    if (tag) url += `&tag=${encodeURIComponent(tag)}`;
+    if (countryVal) url += `&country=${encodeURIComponent(countryVal)}`;
+    if (bitrateVal && parseInt(bitrateVal) > 0) url += `&bitrateMin=${bitrateVal}`;
+    if (codecVal) url += `&codec=${codecVal}`;
+
     try {
-        const url = API_BASE + '/stations/byname/' + encodeURIComponent(query) + '?limit=30&order=clickcount&reverse=true';
         const response = await fetch(url);
         const stations = await response.json();
 
         const filtered = filterBlacklisted(stations);
         if (filtered.length === 0) {
-            stationsList.innerHTML = '<div class="loading-hint">No stations found</div>';
+            stationsList.innerHTML = '<div class="loading-hint">Станцій не знайдено</div>';
             currentStationsList = [];
             return;
         }
@@ -343,31 +441,7 @@ async function searchStations(query) {
         renderStations(filtered);
     } catch (error) {
         console.error('Search error:', error);
-        stationsList.innerHTML = '<div class="loading-hint">Error searching stations</div>';
-    }
-}
-
-// Search stations by tag/genre
-async function searchByTag(tag) {
-    stationsList.innerHTML = '<div class="loading">Loading ' + tag + ' stations...</div>';
-
-    try {
-        const url = API_BASE + '/stations/bytag/' + encodeURIComponent(tag) + '?limit=30&order=clickcount&reverse=true';
-        const response = await fetch(url);
-        const stations = await response.json();
-
-        const filtered = filterBlacklisted(stations);
-        if (filtered.length === 0) {
-            stationsList.innerHTML = '<div class="loading-hint">No stations found</div>';
-            currentStationsList = [];
-            return;
-        }
-
-        currentStationsList = filtered;
-        renderStations(filtered);
-    } catch (error) {
-        console.error('Search error:', error);
-        stationsList.innerHTML = '<div class="loading-hint">Error searching stations</div>';
+        stationsList.innerHTML = '<div class="loading-hint">Помилка завантаження станцій</div>';
     }
 }
 
@@ -388,17 +462,15 @@ async function toggleFavorite(station, btn) {
     if (index === -1) {
         favorites.push(station);
         btn.classList.add('active');
-        btn.textContent = '❤';
+        btn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/></svg>`;
     } else {
         favorites.splice(index, 1);
         btn.classList.remove('active');
-        btn.textContent = '♡';
+        btn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z" fill="currentColor"/></svg>`;
     }
 
-    // Save to localStorage as backup
     localStorage.setItem('favorites', JSON.stringify(favorites));
 
-    // Save to database
     if (db) {
         try {
             if (index === -1) {
@@ -418,7 +490,7 @@ async function toggleFavorite(station, btn) {
 // Show favorites
 function showFavorites() {
     if (favorites.length === 0) {
-        stationsList.innerHTML = '<div class="loading-hint">No favorite stations yet</div>';
+        stationsList.innerHTML = '<div class="loading-hint">Немає збережених станцій</div>';
         currentStationsList = [];
         return;
     }
@@ -447,20 +519,6 @@ async function addToBlacklist(station) {
     }
 }
 
-// Remove from blacklist
-async function removeFromBlacklist(stationuuid) {
-    const index = blacklist.findIndex(item => item.stationuuid === stationuuid);
-    if (index !== -1) {
-        blacklist.splice(index, 1);
-        localStorage.setItem('blacklist', JSON.stringify(blacklist));
-        if (db) {
-            try {
-                await db.execute('DELETE FROM blacklist WHERE stationuuid = $1', [stationuuid]);
-            } catch (e) { console.error('Delete blacklist error:', e); }
-        }
-    }
-}
-
 // Filter out blacklisted stations
 function filterBlacklisted(stations) {
     return stations.filter(station => !isBlacklisted(station.stationuuid));
@@ -468,7 +526,7 @@ function filterBlacklisted(stations) {
 
 // Load popular stations on start
 async function loadPopularStations() {
-    stationsList.innerHTML = '<div class="loading">Loading popular stations...</div>';
+    stationsList.innerHTML = '<div class="loading">Завантаження популярних станцій...</div>';
 
     try {
         const response = await fetch(API_BASE + '/stations/topclick/20');
@@ -477,7 +535,7 @@ async function loadPopularStations() {
         renderStations(stations);
     } catch (error) {
         console.error('Load error:', error);
-        stationsList.innerHTML = '<div class="loading-hint">Search for radio stations above</div>';
+        stationsList.innerHTML = '<div class="loading-hint">Знайдіть радіостанції через пошук вище</div>';
     }
 }
 
@@ -514,16 +572,19 @@ function renderStations(stations, container = stationsList) {
 
         const country = document.createElement('div');
         country.className = 'station-item-country';
-        country.textContent = station.country || 'Unknown';
+        country.textContent = station.country || 'Невідомо';
+
+        const actions = document.createElement('div');
+        actions.className = 'list-actions';
 
         // Favorite button
         const favBtn = document.createElement('button');
-        favBtn.className = 'favorite-btn';
+        favBtn.className = 'action-btn favorite-btn';
         if (isFavorite(station.stationuuid)) {
             favBtn.classList.add('active');
-            favBtn.textContent = '❤';
+            favBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/></svg>`;
         } else {
-            favBtn.textContent = '♡';
+            favBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z" fill="currentColor"/></svg>`;
         }
         favBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -532,9 +593,9 @@ function renderStations(stations, container = stationsList) {
 
         // Blacklist button
         const blacklistBtn = document.createElement('button');
-        blacklistBtn.className = 'blacklist-btn';
-        blacklistBtn.textContent = '🗑';
-        blacklistBtn.title = 'Hide station';
+        blacklistBtn.className = 'action-btn blacklist-btn';
+        blacklistBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>`;
+        blacklistBtn.title = 'Приховати станцію';
         blacklistBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             addToBlacklist(station);
@@ -545,8 +606,9 @@ function renderStations(stations, container = stationsList) {
         info.appendChild(country);
         item.appendChild(logo);
         item.appendChild(info);
-        item.appendChild(favBtn);
-        item.appendChild(blacklistBtn);
+        actions.appendChild(favBtn);
+        actions.appendChild(blacklistBtn);
+        item.appendChild(actions);
 
         item.addEventListener('click', () => {
             currentStationIndex = index;
@@ -634,7 +696,9 @@ async function fetchStreamMetadata(url) {
         const metadata = await invoke('get_stream_metadata', { url });
 
         if (metadata && metadata.title) {
-            nowPlayingTrack.textContent = '♪ ' + metadata.title;
+            const cleanTitle = metadata.title.trim();
+            nowPlayingTrack.textContent = '♪ ' + cleanTitle;
+            showSongNotification(currentStation.name, cleanTitle);
         }
     } catch (error) {
         console.error('Metadata fetch error:', error);
@@ -665,12 +729,31 @@ function stopMetadataPolling() {
     }
 }
 
-// Audio Visualization
-let smoothedData = null;
+// Request Notification Permission
+function requestNotificationPermission() {
+    if ('Notification' in window) {
+        if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+    }
+}
+
+// Show Windows System Notification
+function showSongNotification(stationName, trackTitle) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+        if (trackTitle && trackTitle !== lastTrackTitle) {
+            lastTrackTitle = trackTitle;
+            new Notification(stationName, {
+                body: `Зараз грає: ${trackTitle}`,
+                icon: currentStation.favicon || generatePlaceholderLogo(stationName),
+                silent: true
+            });
+        }
+    }
+}
 
 // Helper function to adjust color brightness
 function adjustBrightness(hexColor, factor) {
-    // Parse hex color
     let hex = hexColor.replace('#', '');
     if (hex.length === 3) {
         hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
@@ -680,7 +763,6 @@ function adjustBrightness(hexColor, factor) {
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
 
-    // Apply brightness factor
     const newR = Math.min(255, Math.round(r * factor));
     const newG = Math.min(255, Math.round(g * factor));
     const newB = Math.min(255, Math.round(b * factor));
@@ -722,51 +804,110 @@ function drawVisualization() {
 
     analyser.getByteFrequencyData(dataArray);
 
-    // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
-    // Number of bars to display
-    const numBars = 24;
-    const barWidth = width / numBars;
-    const gap = 2;
-    const smoothing = 0.6;
-
-    // Get base color from settings
     const baseColor = settings.visualizerColor || '#00b894';
+    const sensitivity = settings.visualizerSensitivity || 1.0;
+    const style = settings.visualizerStyle || 'bars';
 
-    // Only use lower ~60% of frequency data (skip inaudible high frequencies)
-    const usableDataLength = Math.floor(dataArray.length * 0.6);
+    if (style === 'bars') {
+        const numBars = 24;
+        const barWidth = width / numBars;
+        const gap = 3;
+        const smoothing = 0.65;
+        const usableDataLength = Math.floor(dataArray.length * 0.6);
 
-    for (let i = 0; i < numBars; i++) {
-        // Linear distribution across usable frequencies
-        const startFreq = Math.floor((i / numBars) * usableDataLength);
-        const endFreq = Math.floor(((i + 1) / numBars) * usableDataLength);
+        for (let i = 0; i < numBars; i++) {
+            const startFreq = Math.floor((i / numBars) * usableDataLength);
+            const endFreq = Math.floor(((i + 1) / numBars) * usableDataLength);
 
-        // Average the frequency range
-        let sum = 0;
-        let count = Math.max(1, endFreq - startFreq);
-        for (let j = startFreq; j < endFreq && j < usableDataLength; j++) {
-            sum += dataArray[j];
+            let sum = 0;
+            let count = Math.max(1, endFreq - startFreq);
+            for (let j = startFreq; j < endFreq && j < usableDataLength; j++) {
+                sum += dataArray[j];
+            }
+            const value = (sum / count) * sensitivity;
+
+            if (smoothedData) {
+                smoothedData[i] = smoothedData[i] * smoothing + value * (1 - smoothing);
+            }
+
+            const barHeight = Math.max(3, (smoothedData[i] / 255) * height);
+
+            const grad = ctx.createLinearGradient(0, height, 0, height - barHeight);
+            grad.addColorStop(0, baseColor);
+            grad.addColorStop(1, adjustBrightness(baseColor, 1.4));
+
+            ctx.fillStyle = grad;
+
+            const x = i * barWidth + gap / 2;
+            const w = barWidth - gap;
+            const y = height - barHeight;
+
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, barHeight, [4, 4, 0, 0]);
+            ctx.fill();
         }
-        const value = sum / count;
+    } else if (style === 'wave') {
+        analyser.getByteTimeDomainData(dataArray);
 
-        // Smooth the value
-        if (smoothedData) {
-            smoothedData[i] = smoothedData[i] * smoothing + value * (1 - smoothing);
+        ctx.beginPath();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = baseColor;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = baseColor;
+
+        const sliceWidth = width / dataArray.length;
+        let x = 0;
+
+        for (let i = 0; i < dataArray.length; i++) {
+            const v = dataArray[i] / 128.0;
+            const y = (v * height / 2) + ((v - 1.0) * (height / 2) * (sensitivity - 1.0));
+
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+            x += sliceWidth;
         }
 
-        const barHeight = Math.max(2, (smoothedData[i] / 255) * height);
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0; 
+    } else if (style === 'circle') {
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = Math.min(centerX, centerY) * 0.45;
+        const numBars = 48;
+        const usableDataLength = Math.floor(dataArray.length * 0.7);
 
-        // Use selected color with brightness based on height
-        const brightness = 0.7 + (barHeight / height) * 0.3;
-        ctx.fillStyle = adjustBrightness(baseColor, brightness);
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = baseColor;
 
-        // Draw sharp bar
-        const x = Math.floor(i * barWidth + gap / 2);
-        const w = Math.floor(barWidth - gap);
-        const y = Math.floor(height - barHeight);
+        for (let i = 0; i < numBars; i++) {
+            const freqIndex = Math.floor((i / numBars) * usableDataLength);
+            const value = dataArray[freqIndex] * sensitivity;
+            const barHeight = (value / 255) * 20;
 
-        ctx.fillRect(x, y, w, barHeight);
+            const angle = (i / numBars) * Math.PI * 2;
+
+            const x1 = centerX + Math.cos(angle) * radius;
+            const y1 = centerY + Math.sin(angle) * radius;
+
+            const x2 = centerX + Math.cos(angle) * (radius + barHeight);
+            const y2 = centerY + Math.sin(angle) * (radius + barHeight);
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = baseColor;
+            ctx.stroke();
+        }
+
+        ctx.shadowBlur = 0; 
     }
 
     animationId = requestAnimationFrame(drawVisualization);
@@ -795,7 +936,6 @@ function stopVisualization() {
         animationId = null;
     }
 
-    // Reset smoothed data
     if (smoothedData) {
         smoothedData.fill(0);
     }
@@ -829,7 +969,12 @@ function selectStation(station, itemElement) {
     document.querySelectorAll('.station-item').forEach(item => {
         item.classList.remove('active');
     });
-    itemElement.classList.add('active');
+    if (itemElement) itemElement.classList.add('active');
+
+    // Also update active in recently played items
+    document.querySelectorAll('.recent-item').forEach(item => {
+        item.classList.remove('active');
+    });
 
     playStation();
 }
@@ -839,14 +984,20 @@ function playStation() {
     if (!currentStation) return;
 
     nowPlayingTrack.textContent = '';
+    lastTrackTitle = '';
 
-    audioPlayer.src = currentStation.url_resolved || currentStation.url;
+    // Route stream URL through local CORS proxy
+    audioPlayer.src = getProxiedUrl(currentStation.url_resolved || currentStation.url);
+    
     audioPlayer.play()
         .then(() => {
             isPlaying = true;
             updatePlayButton();
             startMetadataPolling();
             startVisualization();
+            
+            // Add to recently played list
+            addToRecentlyPlayed(currentStation);
         })
         .catch(error => {
             console.error('Play error:', error);
@@ -864,9 +1015,8 @@ function stopStation() {
     stopMetadataPolling();
     stopVisualization();
     nowPlayingTrack.textContent = '';
-    // Reset preview button if exists
     if (previewBtn) {
-        previewBtn.textContent = 'Preview';
+        previewBtn.textContent = 'Прослухати';
     }
 }
 
@@ -877,13 +1027,10 @@ async function togglePlay() {
     } else if (currentStation) {
         playStation();
     } else {
-        // No station selected - load popular stations
-        await searchByTag('pop');
+        await searchStations('', 'pop');
         if (currentStationsList.length > 0) {
             const firstItem = document.querySelector('.station-item');
-            if (firstItem) {
-                selectStation(currentStationsList[0], firstItem);
-            }
+            selectStation(currentStationsList[0], firstItem);
         }
     }
 }
@@ -891,12 +1038,80 @@ async function togglePlay() {
 // Update play button appearance
 function updatePlayButton() {
     if (isPlaying) {
-        playIcon.textContent = '⏹';
+        playIcon.innerHTML = `<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z" fill="currentColor"/></svg>`;
         playBtn.classList.add('playing');
     } else {
-        playIcon.textContent = '▶';
+        playIcon.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
         playBtn.classList.remove('playing');
     }
+}
+
+// Recently played functions
+async function addToRecentlyPlayed(station) {
+    if (!station || !station.stationuuid || station.stationuuid.startsWith('preview_')) return;
+
+    recentlyPlayed = recentlyPlayed.filter(s => s.stationuuid !== station.stationuuid);
+    recentlyPlayed.unshift(station);
+    if (recentlyPlayed.length > 10) {
+        recentlyPlayed.pop();
+    }
+
+    localStorage.setItem('recentlyPlayed', JSON.stringify(recentlyPlayed));
+
+    if (db) {
+        try {
+            await db.execute('DELETE FROM recently_played WHERE stationuuid = $1', [station.stationuuid]);
+            await db.execute(
+                'INSERT INTO recently_played (stationuuid, name, url, favicon, timestamp) VALUES ($1, $2, $3, $4, $5)',
+                [station.stationuuid, station.name, station.url, station.favicon || '', Date.now()]
+            );
+        } catch (e) {
+            console.error('Save recently played error:', e);
+        }
+    }
+
+    renderRecentlyPlayed();
+}
+
+function renderRecentlyPlayed() {
+    if (recentlyPlayed.length === 0) {
+        recentlyPlayedSection.classList.add('hidden');
+        return;
+    }
+
+    recentlyPlayedSection.classList.remove('hidden');
+    recentlyPlayedList.innerHTML = '';
+
+    recentlyPlayed.forEach(station => {
+        const item = document.createElement('div');
+        item.className = 'recent-item';
+        if (currentStation && currentStation.stationuuid === station.stationuuid) {
+            item.classList.add('active');
+        }
+
+        const logo = document.createElement('img');
+        logo.className = 'recent-item-logo';
+        logo.src = station.favicon || generatePlaceholderLogo(station.name);
+        logo.onerror = function() {
+            this.src = generatePlaceholderLogo(station.name);
+            this.onerror = null;
+        };
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = station.name;
+
+        item.appendChild(logo);
+        item.appendChild(nameSpan);
+
+        item.addEventListener('click', () => {
+            // Find in current lists or swap list context to recentlyPlayed
+            currentStationsList = recentlyPlayed;
+            currentStationIndex = recentlyPlayed.findIndex(s => s.stationuuid === station.stationuuid);
+            selectStation(station, item);
+        });
+
+        recentlyPlayedList.appendChild(item);
+    });
 }
 
 // Try to get favicon from domain
@@ -912,7 +1127,6 @@ function getFaviconFromUrl(streamUrl) {
 // Generate placeholder logo with first letter
 function generatePlaceholderLogo(name) {
     const letter = (name || 'R').charAt(0).toUpperCase();
-    // Generate color from name hash
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
         hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -929,28 +1143,27 @@ function generatePlaceholderLogo(name) {
             </linearGradient>
         </defs>
         <rect width="64" height="64" rx="8" fill="url(#grad)"/>
-        <text x="32" y="42" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">${letter}</text>
+        <text x="32" y="44" font-family="'Outfit', sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">${letter}</text>
     </svg>`;
 
     return 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 
-// Preview custom station URL - toggle play/stop
+// Preview custom station URL
 function previewCustomUrl() {
-    // If playing preview - stop it
     if (isPlaying && currentStation && currentStation.stationuuid && currentStation.stationuuid.startsWith('preview_')) {
         stopStation();
-        previewBtn.textContent = 'Preview';
+        previewBtn.textContent = 'Прослухати';
         return;
     }
 
     const url = customUrlInput.value.trim();
     if (!url) {
-        alert('Please enter a stream URL');
+        alert('Введіть URL потоку');
         return;
     }
 
-    const name = customNameInput.value.trim() || 'Preview';
+    const name = customNameInput.value.trim() || 'Прослуховування';
     const favicon = getFaviconFromUrl(url);
 
     const tempStation = {
@@ -959,14 +1172,13 @@ function previewCustomUrl() {
         url: url,
         url_resolved: url,
         tags: customGenreInput.value.trim(),
-        country: 'Preview',
+        country: 'Прослуховування',
         favicon: favicon
     };
 
     currentStation = tempStation;
-    stationName.textContent = name + ' (Preview)';
+    stationName.textContent = name + ' (Тест)';
 
-    // Try to show favicon from domain, fallback to placeholder
     stationLogo.classList.remove('hidden');
     if (favicon) {
         stationLogo.src = favicon;
@@ -980,31 +1192,31 @@ function previewCustomUrl() {
 
     updateCurrentStationInfo();
 
-    audioPlayer.src = url;
+    audioPlayer.src = getProxiedUrl(url);
     audioPlayer.play()
         .then(() => {
             isPlaying = true;
             updatePlayButton();
             startVisualization();
-            previewBtn.textContent = 'Stop';
+            previewBtn.textContent = 'Зупинити';
         })
         .catch(error => {
             console.error('Preview error:', error);
-            alert('Cannot play this URL: ' + error.message);
+            alert('Помилка відтворення URL: ' + error.message);
             isPlaying = false;
             updatePlayButton();
-            previewBtn.textContent = 'Preview';
+            previewBtn.textContent = 'Прослухати';
         });
 }
 
-// Custom Stations
+// Add custom station
 async function addCustomStation() {
     const name = customNameInput.value.trim();
     const url = customUrlInput.value.trim();
     const genre = customGenreInput.value.trim();
 
     if (!name || !url) {
-        alert('Please enter station name and URL');
+        alert('Введіть назву та URL станції');
         return;
     }
 
@@ -1014,7 +1226,7 @@ async function addCustomStation() {
         url: url,
         url_resolved: url,
         tags: genre,
-        country: 'Custom',
+        country: 'Власна станція',
         favicon: getFaviconFromUrl(url),
         bitrate: 0,
         codec: ''
@@ -1039,6 +1251,7 @@ async function addCustomStation() {
     renderCustomStations();
 }
 
+// Remove custom station
 async function removeCustomStation(stationuuid) {
     customStations = customStations.filter(s => s.stationuuid !== stationuuid);
     localStorage.setItem('customStations', JSON.stringify(customStations));
@@ -1050,9 +1263,66 @@ async function removeCustomStation(stationuuid) {
     renderCustomStations();
 }
 
+// Open Edit custom station modal
+function openEditModal(station) {
+    editStationUuidInput.value = station.stationuuid;
+    editStationNameInput.value = station.name;
+    editStationUrlInput.value = station.url;
+    editStationGenreInput.value = station.tags || station.genre || '';
+    editModal.classList.remove('hidden');
+}
+
+// Save edited custom station
+async function saveEditedStation() {
+    const uuid = editStationUuidInput.value;
+    const name = editStationNameInput.value.trim();
+    const url = editStationUrlInput.value.trim();
+    const genre = editStationGenreInput.value.trim();
+
+    if (!name || !url) {
+        alert('Введіть назву та URL');
+        return;
+    }
+
+    const index = customStations.findIndex(s => s.stationuuid === uuid);
+    if (index !== -1) {
+        customStations[index].name = name;
+        customStations[index].url = url;
+        customStations[index].url_resolved = url;
+        customStations[index].tags = genre;
+        customStations[index].genre = genre;
+        customStations[index].favicon = getFaviconFromUrl(url);
+
+        localStorage.setItem('customStations', JSON.stringify(customStations));
+
+        if (db) {
+            try {
+                await db.execute(
+                    'UPDATE custom_stations SET name = $1, url = $2, genre = $3, data = $4 WHERE stationuuid = $5',
+                    [name, url, genre, JSON.stringify(customStations[index]), uuid]
+                );
+            } catch (e) { console.error('Update custom station error:', e); }
+        }
+
+        renderCustomStations();
+        updateCurrentStationInfo();
+
+        if (currentStation && currentStation.stationuuid === uuid) {
+            stationName.textContent = name;
+            currentStation = customStations[index];
+            if (isPlaying) {
+                playStation();
+            }
+        }
+    }
+
+    editModal.classList.add('hidden');
+}
+
+// Render custom stations list
 function renderCustomStations() {
     if (customStations.length === 0) {
-        customStationsList.innerHTML = '<div class="loading-hint">No custom stations yet</div>';
+        customStationsList.innerHTML = '<div class="loading-hint">Власних станцій немає</div>';
         return;
     }
 
@@ -1086,19 +1356,38 @@ function renderCustomStations() {
 
         const urlEl = document.createElement('div');
         urlEl.className = 'station-item-country';
-        urlEl.textContent = station.url.substring(0, 40) + '...';
+        urlEl.textContent = station.url.substring(0, 40) + (station.url.length > 40 ? '...' : '');
 
+        const actions = document.createElement('div');
+        actions.className = 'list-actions';
+
+        // Favorite
         const favoriteBtn = document.createElement('button');
-        favoriteBtn.className = 'favorite-btn' + (isFavorite(station.stationuuid) ? ' active' : '');
-        favoriteBtn.textContent = isFavorite(station.stationuuid) ? '❤' : '♡';
+        favoriteBtn.className = 'action-btn favorite-btn' + (isFavorite(station.stationuuid) ? ' active' : '');
+        if (isFavorite(station.stationuuid)) {
+            favoriteBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/></svg>`;
+        } else {
+            favoriteBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z" fill="currentColor"/></svg>`;
+        }
         favoriteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleFavorite(station, favoriteBtn);
         });
 
+        // Edit
+        const editBtn = document.createElement('button');
+        editBtn.className = 'action-btn edit-btn';
+        editBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>`;
+        editBtn.title = 'Редагувати';
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openEditModal(station);
+        });
+
+        // Delete
         const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'blacklist-btn';
-        deleteBtn.textContent = '✕';
+        deleteBtn.className = 'action-btn delete-btn';
+        deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>`;
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             removeCustomStation(station.stationuuid);
@@ -1108,8 +1397,10 @@ function renderCustomStations() {
         info.appendChild(urlEl);
         item.appendChild(logo);
         item.appendChild(info);
-        item.appendChild(favoriteBtn);
-        item.appendChild(deleteBtn);
+        actions.appendChild(favoriteBtn);
+        actions.appendChild(editBtn);
+        actions.appendChild(deleteBtn);
+        item.appendChild(actions);
 
         item.addEventListener('click', () => {
             currentStationsList = customStations;
@@ -1138,10 +1429,9 @@ async function exportToJson(data, defaultFilename) {
             }
         } catch (error) {
             console.error('Export error:', error);
-            alert('Export error: ' + error.message);
+            alert('Помилка експорту: ' + error.message);
         }
     } else {
-        // Fallback for browser
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1154,24 +1444,16 @@ async function exportToJson(data, defaultFilename) {
 
 async function exportFavorites() {
     if (favorites.length === 0) {
-        alert('No favorites to export');
+        alert('Немає обраних станцій для експорту');
         return;
     }
     await exportToJson(favorites, 'radio-favorites.json');
 }
 
-async function exportCurrent() {
-    if (currentStationsList.length === 0) {
-        alert('No stations to export');
-        return;
-    }
-    await exportToJson(currentStationsList, 'radio-stations.json');
-}
-
 // Export current playing station
 async function exportCurrentStation() {
     if (!currentStation) {
-        alert('No station playing');
+        alert('Немає активної станції');
         return;
     }
     await exportToJson([currentStation], `${currentStation.name.replace(/[^a-zA-Z0-9]/g, '_')}.json`);
@@ -1182,7 +1464,7 @@ function updateCurrentStationInfo() {
     if (!currentStationInfo) return;
 
     if (!currentStation) {
-        currentStationInfo.innerHTML = '<div class="current-station-empty">No station playing</div>';
+        currentStationInfo.innerHTML = '<div class="current-station-empty">Немає активної станції</div>';
         return;
     }
 
@@ -1194,53 +1476,12 @@ function updateCurrentStationInfo() {
     currentStationInfo.innerHTML = `
         <div class="current-station-form">
             <img src="${logoSrc}" class="current-station-logo" onerror="this.src='${fallbackLogo}'; this.onerror=null;">
-            <input type="text" value="${s.name}" readonly placeholder="Station name">
-            <input type="text" value="${s.url_resolved || s.url}" readonly placeholder="Stream URL">
-            <input type="text" value="${genre}" readonly placeholder="Genre">
-            <button class="btn-export" onclick="exportCurrentStation()">Export</button>
+            <input type="text" value="${s.name}" readonly placeholder="Назва">
+            <input type="text" value="${s.url_resolved || s.url}" readonly placeholder="URL потоку">
+            <input type="text" value="${genre}" readonly placeholder="Жанр">
+            <button class="btn-export" onclick="exportCurrentStation()">Експортувати</button>
         </div>
     `;
-}
-
-// Add current station to custom stations
-async function addCurrentToCustom() {
-    if (!currentStation) return;
-
-    const s = currentStation;
-    if (customStations.some(cs => cs.url === s.url || cs.stationuuid === s.stationuuid)) {
-        alert('Station already in My Stations');
-        return;
-    }
-
-    const station = {
-        stationuuid: 'custom_' + Date.now(),
-        name: s.name,
-        url: s.url,
-        url_resolved: s.url_resolved || s.url,
-        tags: s.tags || '',
-        country: s.country || 'Custom',
-        favicon: s.favicon || '',
-        bitrate: s.bitrate || 0,
-        codec: s.codec || ''
-    };
-
-    customStations.push(station);
-
-    if (db) {
-        try {
-            await db.execute(
-                'INSERT OR REPLACE INTO custom_stations (stationuuid, name, url, genre, data) VALUES ($1, $2, $3, $4, $5)',
-                [station.stationuuid, station.name, station.url, station.tags, JSON.stringify(station)]
-            );
-        } catch (e) {
-            console.error('Error saving custom station:', e);
-        }
-    }
-    localStorage.setItem('customStations', JSON.stringify(customStations));
-
-    renderCustomStations();
-    updateCurrentStationInfo();
-    alert('Station added to My Stations');
 }
 
 function importStations(event) {
@@ -1253,11 +1494,10 @@ function importStations(event) {
             const data = JSON.parse(e.target.result);
 
             if (!Array.isArray(data)) {
-                alert('Invalid file format');
+                alert('Неправильний формат файлу');
                 return;
             }
 
-            // Check if it's custom stations or favorites
             const isCustom = data.some(s => s.stationuuid && s.stationuuid.startsWith('custom_'));
 
             if (isCustom) {
@@ -1273,7 +1513,7 @@ function importStations(event) {
                     }
                 }
                 renderCustomStations();
-                alert('Custom stations imported successfully');
+                alert('Власні станції імпортовано');
             } else {
                 for (const station of data) {
                     if (!favorites.some(f => f.stationuuid === station.stationuuid)) {
@@ -1286,10 +1526,10 @@ function importStations(event) {
                         }
                     }
                 }
-                alert('Favorites imported successfully');
+                alert('Обрані станції імпортовано');
             }
         } catch (error) {
-            alert('Error reading file: ' + error.message);
+            alert('Помилка читання файлу: ' + error.message);
         }
     };
     reader.readAsText(file);
@@ -1298,7 +1538,6 @@ function importStations(event) {
 
 // Settings
 async function toggleCompactMode(forceCompact = null) {
-    // If forceCompact is provided, use it; otherwise use checkbox state
     if (forceCompact !== null) {
         settings.compactMode = forceCompact;
         compactModeCheckbox.checked = forceCompact;
@@ -1313,20 +1552,17 @@ async function toggleCompactMode(forceCompact = null) {
         appContainer.classList.remove('compact');
     }
 
-    // Resize window via Tauri API
     if (hasTauriApi) {
         try {
             const { getCurrentWindow } = window.__TAURI__.window;
             const appWindow = getCurrentWindow();
 
             if (settings.compactMode) {
-                // Compact size - widget-like, fits the player card
-                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(380, 165));
-                await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(350, 155));
+                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(420, 160));
+                await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(380, 150));
             } else {
-                // Normal size
-                await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(400, 500));
-                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(500, 600));
+                await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(420, 520));
+                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(500, 680));
             }
         } catch (e) {
             console.error('Failed to resize window:', e);
@@ -1390,23 +1626,19 @@ volumeDownBtn.addEventListener('click', volumeDown);
 
 searchBtn.addEventListener('click', () => {
     const query = searchInput.value.trim();
-    if (query) {
-        searchStations(query);
-    }
+    searchStations(query);
 });
 
 searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         const query = searchInput.value.trim();
-        if (query) {
-            searchStations(query);
-        }
+        searchStations(query);
     }
 });
 
 // Handle audio errors
 audioPlayer.addEventListener('error', () => {
-    console.error('Audio error');
+    console.error('Audio stream playback error');
     isPlaying = false;
     updatePlayButton();
     stopMetadataPolling();
@@ -1439,7 +1671,7 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
         if (genre === 'favorites') {
             showFavorites();
         } else {
-            searchByTag(genre);
+            searchStations('', genre);
         }
     });
 });
@@ -1447,6 +1679,10 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
 // Custom stations
 addCustomBtn.addEventListener('click', addCustomStation);
 previewBtn.addEventListener('click', previewCustomUrl);
+
+// Modal Save & Close
+closeModalBtn.addEventListener('click', () => editModal.classList.add('hidden'));
+saveEditBtn.addEventListener('click', saveEditedStation);
 
 // Export/Import
 exportFavoritesBtn.addEventListener('click', exportFavorites);
@@ -1461,9 +1697,19 @@ enterCompactBtn.addEventListener('click', enterCompactMode);
 exitCompactBtn.addEventListener('click', exitCompactMode);
 alwaysOnTopBtn.addEventListener('click', toggleAlwaysOnTop);
 
+visualizerStyleSelect.addEventListener('change', () => {
+    settings.visualizerStyle = visualizerStyleSelect.value;
+    saveSetting('visualizerStyle', settings.visualizerStyle);
+});
+
+visualizerSensitivityInput.addEventListener('input', () => {
+    settings.visualizerSensitivity = parseFloat(visualizerSensitivityInput.value);
+    saveSetting('visualizerSensitivity', settings.visualizerSensitivity);
+});
+
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
     switch(e.key) {
         case ' ':

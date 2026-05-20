@@ -13,7 +13,10 @@ tauri-plugin-fs = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["net", "io-util", "time"] }
+tokio = { version = "1", features = ["net", "io-util", "time", "rt-multi-thread"] }
+native-tls = "0.2"
+tokio-native-tls = "0.3"
+percent-encoding = "2.3"
 
 [profile.release]
 strip = true
