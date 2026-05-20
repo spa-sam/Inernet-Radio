@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00cec9"/>
+      <stop offset="1" stop-color="#8e44ad"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="220" fill="url(#bg)"/>
+  <!-- broadcast waves -->
+  <g fill="none" stroke="#ffffff" stroke-width="54" stroke-linecap="round">
+    <path d="M 627.7 374.1 A 180 180 0 0 1 627.7 649.9"/>
+    <path d="M 704.9 282.2 A 300 300 0 0 1 704.9 741.8"/>
+    <path d="M 396.3 374.1 A 180 180 0 0 0 396.3 649.9"/>
+    <path d="M 319.1 282.2 A 300 300 0 0 0 319.1 741.8"/>
+  </g>
+  <!-- transmitter -->
+  <circle cx="512" cy="512" r="84" fill="#ffffff"/>
+</svg>

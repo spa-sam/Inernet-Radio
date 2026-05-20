@@ -221,6 +221,18 @@ async fn write_proxy_headers(client: &mut TcpStream, content_type: &str) -> std:
     client.write_all(headers.as_bytes()).await
 }
 
+// Whether an I/O error is just the client closing the connection
+// (e.g. the user switched stations) rather than a real failure.
+fn is_disconnect(e: &std::io::Error) -> bool {
+    matches!(
+        e.kind(),
+        std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::UnexpectedEof
+    )
+}
+
 // Parse the numeric status code from an HTTP/ICY status line
 fn parse_status_code(status_line: &str) -> u16 {
     status_line
@@ -412,7 +424,9 @@ async fn handle_proxy_client(
     let mut request_line = String::new();
     {
         let mut reader = BufReader::new(&mut client_stream);
-        reader.read_line(&mut request_line).await?;
+        if let Err(e) = reader.read_line(&mut request_line).await {
+            return if is_disconnect(&e) { Ok(()) } else { Err(e.into()) };
+        }
     }
 
     let parts: Vec<&str> = request_line.split_whitespace().collect();
@@ -441,15 +455,23 @@ async fn handle_proxy_client(
 
     match open_audio_stream(&target_url, 0, raw).await {
         Ok((mut remote_reader, content_type)) => {
-            write_proxy_headers(&mut client_stream, &content_type).await?;
+            if let Err(e) = write_proxy_headers(&mut client_stream, &content_type).await {
+                return if is_disconnect(&e) { Ok(()) } else { Err(e.into()) };
+            }
             let (_, mut client_write_half) = tokio::io::split(client_stream);
-            tokio::io::copy(&mut remote_reader, &mut client_write_half).await?;
+            // A client disconnect (e.g. switching stations) aborts the copy —
+            // that is normal stream termination, not an error worth reporting.
+            if let Err(e) = tokio::io::copy(&mut remote_reader, &mut client_write_half).await {
+                if !is_disconnect(&e) {
+                    return Err(e.into());
+                }
+            }
         }
         Err(e) => {
             eprintln!("Proxy resolve error for {}: {:?}", target_url, e);
-            client_stream
+            let _ = client_stream
                 .write_all(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
-                .await?;
+                .await;
         }
     }
 

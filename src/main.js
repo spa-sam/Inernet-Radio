@@ -125,6 +125,15 @@ let currentStationIndex = -1;
 let hls = null;
 let proxyHlsLoader = null;
 
+// Playback intent & auto-reconnect
+let wantPlayback = false;
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+const MAX_RECONNECT = 3;
+
+// Search-as-you-type debounce
+let searchDebounce = null;
+
 // Settings state
 let settings = { 
     compactMode: false, 
@@ -397,7 +406,7 @@ async function init() {
     // Restore last station UI (without playing)
     if (lastStation) {
         currentStation = lastStation;
-        stationName.textContent = lastStation.name;
+        setStationName(lastStation.name);
         updateMetadata(lastStation);
         updateCurrentStationInfo();
         stationLogo.classList.remove('hidden');
@@ -778,6 +787,72 @@ function clearMetadata() {
     nowPlayingTrack.textContent = '';
 }
 
+// Set the station name, enabling marquee scrolling when it overflows
+function applyMarquee(el) {
+    el.classList.remove('marquee');
+    el.style.removeProperty('--marquee-distance');
+    requestAnimationFrame(() => {
+        const overflow = el.scrollWidth - el.parentElement.clientWidth;
+        if (overflow > 4) {
+            el.style.setProperty('--marquee-distance', `-${overflow + 12}px`);
+            el.classList.add('marquee');
+        }
+    });
+}
+
+function setStationName(text) {
+    stationName.textContent = text;
+    applyMarquee(stationName);
+}
+
+// Show connection / playback status in the now-playing line
+function setConnectionState(state) {
+    nowPlayingTrack.classList.remove('status-line', 'status-error');
+    if (state === 'connecting') {
+        nowPlayingTrack.textContent = '⏳ Підключення…';
+        nowPlayingTrack.classList.add('status-line');
+    } else if (state === 'buffering') {
+        nowPlayingTrack.textContent = '⏳ Буферизація…';
+        nowPlayingTrack.classList.add('status-line');
+    } else if (state === 'reconnecting') {
+        nowPlayingTrack.textContent = `🔄 Перепідключення… (${reconnectAttempts}/${MAX_RECONNECT})`;
+        nowPlayingTrack.classList.add('status-line');
+    } else if (state === 'error') {
+        nowPlayingTrack.textContent = '⚠ Не вдалося відтворити станцію';
+        nowPlayingTrack.classList.add('status-error');
+    } else if (state === 'playing') {
+        nowPlayingTrack.textContent = lastTrackTitle ? '♪ ' + lastTrackTitle : '';
+    }
+}
+
+// Schedule an automatic reconnect after the stream drops
+function scheduleReconnect() {
+    clearTimeout(reconnectTimer);
+    if (reconnectAttempts >= MAX_RECONNECT) {
+        wantPlayback = false;
+        isPlaying = false;
+        updatePlayButton();
+        stopVisualization();
+        setConnectionState('error');
+        return;
+    }
+    reconnectAttempts++;
+    setConnectionState('reconnecting');
+    reconnectTimer = setTimeout(() => {
+        if (wantPlayback && currentStation) {
+            playStation();
+        }
+    }, 2500);
+}
+
+// Handle an unexpected stream interruption
+function handleStreamDrop(reason) {
+    if (!wantPlayback) return;
+    console.warn('Stream interrupted:', reason);
+    stopMetadataPolling();
+    scheduleReconnect();
+}
+
 // Fetch ICY metadata from Rust backend
 async function fetchStreamMetadata(url) {
     if (!hasTauriApi) return;
@@ -1042,7 +1117,7 @@ function selectStation(station, itemElement) {
     lastStation = station;
     saveSetting('lastStation', station);
 
-    stationName.textContent = station.name;
+    setStationName(station.name);
     updateMetadata(station);
     updateCurrentStationInfo();
 
@@ -1073,6 +1148,8 @@ function selectStation(station, itemElement) {
 // Shared playback success / error handlers
 function onPlaySuccess() {
     isPlaying = true;
+    reconnectAttempts = 0;
+    clearTimeout(reconnectTimer);
     updatePlayButton();
     startMetadataPolling();
     startVisualization();
@@ -1081,8 +1158,12 @@ function onPlaySuccess() {
 
 function onPlayError(error) {
     console.error('Play error:', error);
-    isPlaying = false;
-    updatePlayButton();
+    if (wantPlayback) {
+        scheduleReconnect();
+    } else {
+        isPlaying = false;
+        updatePlayButton();
+    }
 }
 
 // Detect HLS streams (Radio Browser sets hls=1, or URL ends with .m3u8)
@@ -1157,8 +1238,10 @@ function playHlsStation(url, onSuccess, onError) {
 function playStation() {
     if (!currentStation) return;
 
-    nowPlayingTrack.textContent = '';
+    wantPlayback = true;
     lastTrackTitle = '';
+    clearTimeout(reconnectTimer);
+    setConnectionState('connecting');
 
     // Tear down any previous HLS instance before switching streams
     if (hls) {
@@ -1179,6 +1262,9 @@ function playStation() {
 
 // Stop playback
 function stopStation() {
+    wantPlayback = false;
+    reconnectAttempts = 0;
+    clearTimeout(reconnectTimer);
     audioPlayer.pause();
     if (hls) {
         hls.destroy();
@@ -1352,7 +1438,7 @@ function previewCustomUrl() {
     };
 
     currentStation = tempStation;
-    stationName.textContent = name + ' (Тест)';
+    setStationName(name + ' (Тест)');
 
     stationLogo.classList.remove('hidden');
     if (favicon) {
@@ -1494,7 +1580,7 @@ async function saveEditedStation() {
         updateCurrentStationInfo();
 
         if (currentStation && currentStation.stationuuid === uuid) {
-            stationName.textContent = name;
+            setStationName(name);
             currentStation = customStations[index];
             if (isPlaying) {
                 playStation();
@@ -1917,18 +2003,48 @@ searchBtn.addEventListener('click', () => {
 
 searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
+        clearTimeout(searchDebounce);
         const query = searchInput.value.trim();
         searchStations(query);
     }
 });
 
-// Handle audio errors
+// Search-as-you-type with debounce
+searchInput.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+        const query = searchInput.value.trim();
+        if (query.length >= 2) {
+            searchStations(query);
+        } else if (query.length === 0) {
+            loadPopularStations();
+        }
+    }, 500);
+});
+
+// Re-evaluate the station name marquee when the window is resized
+window.addEventListener('resize', () => {
+    applyMarquee(stationName);
+});
+
+// Handle audio stream lifecycle events
 audioPlayer.addEventListener('error', () => {
-    console.error('Audio stream playback error');
-    isPlaying = false;
-    updatePlayButton();
-    stopMetadataPolling();
-    stopVisualization();
+    handleStreamDrop('audio error');
+});
+
+audioPlayer.addEventListener('ended', () => {
+    handleStreamDrop('stream ended');
+});
+
+audioPlayer.addEventListener('waiting', () => {
+    if (wantPlayback && isPlaying) {
+        setConnectionState('buffering');
+    }
+});
+
+audioPlayer.addEventListener('playing', () => {
+    reconnectAttempts = 0;
+    setConnectionState('playing');
 });
 
 // Tab switching

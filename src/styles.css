@@ -324,18 +324,28 @@ body {
 }
 
 .station-name-row {
-    display: flex;
-    align-items: center;
+    display: block;
+    overflow: hidden;
 }
 
 #station-name {
     font-size: 1.25rem;
     font-weight: 700;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    display: inline-block;
     color: var(--text-main);
     letter-spacing: -0.5px;
+    will-change: transform;
+}
+
+/* Marquee scrolling for station names that overflow */
+#station-name.marquee {
+    animation: marquee-scroll 9s ease-in-out infinite alternate;
+}
+
+@keyframes marquee-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(var(--marquee-distance, 0)); }
 }
 
 .now-playing-track {
@@ -348,6 +358,23 @@ body {
     white-space: nowrap;
     opacity: 0.9;
     text-shadow: 0 0 10px rgba(0, 206, 201, 0.2);
+}
+
+/* Connection / playback status states */
+.now-playing-track.status-line {
+    color: var(--text-muted);
+    text-shadow: none;
+    animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+.now-playing-track.status-error {
+    color: var(--accent-red);
+    text-shadow: none;
+}
+
+@keyframes status-pulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
 }
 
 .station-meta {
