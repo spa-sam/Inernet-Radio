@@ -141,6 +141,7 @@
 
                 <div class="presets">
                     <button class="preset-btn preset-favorites" data-genre="favorites">★ Обрані</button>
+                    <button class="preset-btn preset-somafm" data-genre="somafm">SomaFM</button>
                     <button class="preset-btn" data-genre="pop">Pop</button>
                     <button class="preset-btn" data-genre="rock">Rock</button>
                     <button class="preset-btn" data-genre="rap">Rap</button>
@@ -194,7 +195,7 @@
                 <div class="export-buttons">
                     <button id="export-favorites-btn">Експортувати обрані</button>
                     <button id="import-btn">Імпортувати станції</button>
-                    <input type="file" id="import-file" accept=".json" style="display:none">
+                    <input type="file" id="import-file" accept=".json,.m3u,.m3u8,.pls,.opml,.xml" style="display:none">
                 </div>
             </div>
         </div>
@@ -277,6 +278,7 @@
         </div>
     </div>
 
+    <script src="hls.min.js"></script>
     <script src="main.js"></script>
 </body>
 </html>

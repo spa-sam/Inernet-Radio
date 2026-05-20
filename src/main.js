@@ -1,5 +1,45 @@
-// Radio Browser API base URL
-const API_BASE = 'https://all.api.radio-browser.info/json';
+// Radio Browser API - mirror servers with automatic failover.
+// Defaults are used until the live server list is fetched.
+let apiServers = [
+    'de1.api.radio-browser.info',
+    'de2.api.radio-browser.info',
+    'nl1.api.radio-browser.info',
+    'at1.api.radio-browser.info'
+];
+let currentApiServer = 0;
+
+// Fetch the live list of Radio Browser mirror servers
+async function loadApiServers() {
+    try {
+        const res = await fetch('https://all.api.radio-browser.info/json/servers');
+        const servers = await res.json();
+        const names = [...new Set(servers.map(s => s.name).filter(Boolean))];
+        if (names.length > 0) {
+            apiServers = names;
+            currentApiServer = Math.floor(Math.random() * names.length);
+        }
+    } catch (e) {
+        console.warn('Could not load API server list, using defaults:', e);
+    }
+}
+
+// Fetch a Radio Browser endpoint, failing over between mirrors on error
+async function apiFetch(path) {
+    let lastError;
+    for (let i = 0; i < apiServers.length; i++) {
+        const index = (currentApiServer + i) % apiServers.length;
+        try {
+            const res = await fetch(`https://${apiServers[index]}/json${path}`);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            currentApiServer = index;
+            return await res.json();
+        } catch (e) {
+            lastError = e;
+            console.warn(`API server ${apiServers[index]} failed:`, e.message);
+        }
+    }
+    throw lastError || new Error('All API servers failed');
+}
 
 // DOM elements
 const audioPlayer = document.getElementById('audio-player');
@@ -80,6 +120,10 @@ let recentlyPlayed = [];
 let lastStation = null;
 let currentStationsList = [];
 let currentStationIndex = -1;
+
+// HLS playback (hls.js)
+let hls = null;
+let proxyHlsLoader = null;
 
 // Settings state
 let settings = { 
@@ -296,13 +340,17 @@ async function initProxy() {
     }
 }
 
-// Helper to get proxied stream URL for bypassing CORS
-function getProxiedUrl(originalUrl) {
+// Helper to get proxied stream URL for bypassing CORS.
+// When `raw` is true the proxy streams the response verbatim without
+// resolving .pls/.m3u playlists (used for HLS manifests served to hls.js).
+function getProxiedUrl(originalUrl, raw) {
     if (proxyPort > 0 && originalUrl && (originalUrl.startsWith('http://') || originalUrl.startsWith('https://'))) {
         if (originalUrl.includes('localhost') || originalUrl.includes('127.0.0.1')) {
             return originalUrl;
         }
-        return `http://127.0.0.1:${proxyPort}/stream?url=${encodeURIComponent(originalUrl)}`;
+        let proxied = `http://127.0.0.1:${proxyPort}/stream?url=${encodeURIComponent(originalUrl)}`;
+        if (raw) proxied += '&raw=1';
+        return proxied;
     }
     return originalUrl;
 }
@@ -313,6 +361,9 @@ async function init() {
 
     // Load proxy port first
     await initProxy();
+
+    // Refresh the Radio Browser mirror list in the background
+    loadApiServers();
 
     // Initialize database
     await initDatabase();
@@ -363,6 +414,9 @@ async function init() {
 
     // Load custom stations
     renderCustomStations();
+
+    // Load the popular stations list
+    loadPopularStations();
 }
 
 // Volume sections
@@ -419,16 +473,15 @@ async function searchStations(query, tag = '') {
     const bitrateVal = filterBitrate.value;
     const codecVal = filterCodec.value;
 
-    let url = `${API_BASE}/stations/search?limit=30&order=clickcount&reverse=true`;
-    if (query) url += `&name=${encodeURIComponent(query)}`;
-    if (tag) url += `&tag=${encodeURIComponent(tag)}`;
-    if (countryVal) url += `&country=${encodeURIComponent(countryVal)}`;
-    if (bitrateVal && parseInt(bitrateVal) > 0) url += `&bitrateMin=${bitrateVal}`;
-    if (codecVal) url += `&codec=${codecVal}`;
+    let path = `/stations/search?limit=30&order=clickcount&reverse=true`;
+    if (query) path += `&name=${encodeURIComponent(query)}`;
+    if (tag) path += `&tag=${encodeURIComponent(tag)}`;
+    if (countryVal) path += `&country=${encodeURIComponent(countryVal)}`;
+    if (bitrateVal && parseInt(bitrateVal) > 0) path += `&bitrateMin=${bitrateVal}`;
+    if (codecVal) path += `&codec=${codecVal}`;
 
     try {
-        const response = await fetch(url);
-        const stations = await response.json();
+        const stations = await apiFetch(path);
 
         const filtered = filterBlacklisted(stations);
         if (filtered.length === 0) {
@@ -529,13 +582,51 @@ async function loadPopularStations() {
     stationsList.innerHTML = '<div class="loading">Завантаження популярних станцій...</div>';
 
     try {
-        const response = await fetch(API_BASE + '/stations/topclick/20');
-        const stations = await response.json();
+        const stations = await apiFetch('/stations/topclick/20');
         currentStationsList = stations;
         renderStations(stations);
     } catch (error) {
         console.error('Load error:', error);
         stationsList.innerHTML = '<div class="loading-hint">Знайдіть радіостанції через пошук вище</div>';
+    }
+}
+
+// Load SomaFM curated channels as stations
+async function loadSomaFM() {
+    stationsList.innerHTML = '<div class="loading">Завантаження SomaFM...</div>';
+
+    try {
+        const res = await fetch('https://somafm.com/channels.json');
+        const data = await res.json();
+        const stations = (data.channels || []).map(ch => {
+            // Pick the best available playlist (a .pls the proxy can resolve)
+            const playlists = ch.playlists || [];
+            const best = playlists.find(p => p.quality === 'highest') || playlists[0] || {};
+            return {
+                stationuuid: 'somafm_' + ch.id,
+                name: ch.title,
+                url: best.url,
+                url_resolved: best.url,
+                favicon: ch.image || ch.xlimage || '',
+                tags: ch.genre || '',
+                country: 'SomaFM',
+                bitrate: 0,
+                codec: '',
+                hls: 0
+            };
+        }).filter(s => s.url);
+
+        if (stations.length === 0) {
+            stationsList.innerHTML = '<div class="loading-hint">SomaFM не повернув станцій</div>';
+            currentStationsList = [];
+            return;
+        }
+
+        currentStationsList = stations;
+        renderStations(stations);
+    } catch (error) {
+        console.error('SomaFM load error:', error);
+        stationsList.innerHTML = '<div class="loading-hint">Не вдалося завантажити SomaFM</div>';
     }
 }
 
@@ -979,6 +1070,89 @@ function selectStation(station, itemElement) {
     playStation();
 }
 
+// Shared playback success / error handlers
+function onPlaySuccess() {
+    isPlaying = true;
+    updatePlayButton();
+    startMetadataPolling();
+    startVisualization();
+    addToRecentlyPlayed(currentStation);
+}
+
+function onPlayError(error) {
+    console.error('Play error:', error);
+    isPlaying = false;
+    updatePlayButton();
+}
+
+// Detect HLS streams (Radio Browser sets hls=1, or URL ends with .m3u8)
+function isHlsStream(station, url) {
+    if (station && station.hls === 1) return true;
+    const path = (url || '').split(/[?#]/)[0].toLowerCase();
+    return path.endsWith('.m3u8');
+}
+
+// Build a hls.js loader that routes every request through the local CORS proxy
+function getProxyHlsLoader() {
+    if (proxyHlsLoader) return proxyHlsLoader;
+    const BaseLoader = Hls.DefaultConfig.loader;
+    proxyHlsLoader = class ProxyHlsLoader extends BaseLoader {
+        load(context, config, callbacks) {
+            const realUrl = context.url;
+            const wrapped = Object.assign({}, callbacks, {
+                onSuccess: (response, stats, ctx, networkDetails) => {
+                    // Restore the real URL so hls.js resolves relative URIs correctly
+                    if (response) response.url = realUrl;
+                    if (ctx) ctx.url = realUrl;
+                    callbacks.onSuccess(response, stats, ctx, networkDetails);
+                }
+            });
+            context.url = getProxiedUrl(realUrl, true);
+            super.load(context, config, wrapped);
+        }
+    };
+    return proxyHlsLoader;
+}
+
+// Play an HLS (.m3u8) stream through hls.js
+function playHlsStation(url, onSuccess, onError) {
+    onSuccess = onSuccess || onPlaySuccess;
+    onError = onError || onPlayError;
+
+    if (typeof Hls === 'undefined') {
+        onError(new Error('hls.js не завантажено (немає src/hls.min.js)'));
+        return;
+    }
+
+    if (Hls.isSupported()) {
+        hls = new Hls({
+            enableWorker: false,
+            loader: getProxyHlsLoader()
+        });
+        hls.loadSource(url);
+        hls.attachMedia(audioPlayer);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            audioPlayer.play().then(onSuccess).catch(onError);
+        });
+        hls.on(Hls.Events.ERROR, (evt, data) => {
+            if (!data.fatal) return;
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                hls.startLoad();
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                hls.recoverMediaError();
+            } else {
+                onError(new Error('HLS: ' + data.details));
+            }
+        });
+    } else if (audioPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS support (e.g. Safari)
+        audioPlayer.src = getProxiedUrl(url);
+        audioPlayer.play().then(onSuccess).catch(onError);
+    } else {
+        onError(new Error('HLS не підтримується'));
+    }
+}
+
 // Play current station
 function playStation() {
     if (!currentStation) return;
@@ -986,29 +1160,30 @@ function playStation() {
     nowPlayingTrack.textContent = '';
     lastTrackTitle = '';
 
-    // Route stream URL through local CORS proxy
-    audioPlayer.src = getProxiedUrl(currentStation.url_resolved || currentStation.url);
-    
-    audioPlayer.play()
-        .then(() => {
-            isPlaying = true;
-            updatePlayButton();
-            startMetadataPolling();
-            startVisualization();
-            
-            // Add to recently played list
-            addToRecentlyPlayed(currentStation);
-        })
-        .catch(error => {
-            console.error('Play error:', error);
-            isPlaying = false;
-            updatePlayButton();
-        });
+    // Tear down any previous HLS instance before switching streams
+    if (hls) {
+        hls.destroy();
+        hls = null;
+    }
+
+    const streamUrl = currentStation.url_resolved || currentStation.url;
+
+    if (isHlsStream(currentStation, streamUrl)) {
+        playHlsStation(streamUrl);
+    } else {
+        // Route stream URL through local CORS proxy
+        audioPlayer.src = getProxiedUrl(streamUrl);
+        audioPlayer.play().then(onPlaySuccess).catch(onPlayError);
+    }
 }
 
 // Stop playback
 function stopStation() {
     audioPlayer.pause();
+    if (hls) {
+        hls.destroy();
+        hls = null;
+    }
     audioPlayer.src = '';
     isPlaying = false;
     updatePlayButton();
@@ -1192,21 +1367,32 @@ function previewCustomUrl() {
 
     updateCurrentStationInfo();
 
-    audioPlayer.src = getProxiedUrl(url);
-    audioPlayer.play()
-        .then(() => {
-            isPlaying = true;
-            updatePlayButton();
-            startVisualization();
-            previewBtn.textContent = 'Зупинити';
-        })
-        .catch(error => {
-            console.error('Preview error:', error);
-            alert('Помилка відтворення URL: ' + error.message);
-            isPlaying = false;
-            updatePlayButton();
-            previewBtn.textContent = 'Прослухати';
-        });
+    // Tear down any previous HLS instance
+    if (hls) {
+        hls.destroy();
+        hls = null;
+    }
+
+    const onPreviewOk = () => {
+        isPlaying = true;
+        updatePlayButton();
+        startVisualization();
+        previewBtn.textContent = 'Зупинити';
+    };
+    const onPreviewError = (error) => {
+        console.error('Preview error:', error);
+        alert('Помилка відтворення URL: ' + (error && error.message ? error.message : error));
+        isPlaying = false;
+        updatePlayButton();
+        previewBtn.textContent = 'Прослухати';
+    };
+
+    if (isHlsStream(tempStation, url)) {
+        playHlsStation(url, onPreviewOk, onPreviewError);
+    } else {
+        audioPlayer.src = getProxiedUrl(url);
+        audioPlayer.play().then(onPreviewOk).catch(onPreviewError);
+    }
 }
 
 // Add custom station
@@ -1484,49 +1670,149 @@ function updateCurrentStationInfo() {
     `;
 }
 
+// Parse an M3U / M3U8 playlist into {name, url} entries
+function parseM3U(text) {
+    const stations = [];
+    let pendingName = '';
+    for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line) continue;
+        if (line.toUpperCase().startsWith('#EXTINF:')) {
+            const comma = line.indexOf(',');
+            pendingName = comma >= 0 ? line.slice(comma + 1).trim() : '';
+        } else if (!line.startsWith('#')) {
+            stations.push({ name: pendingName || line, url: line });
+            pendingName = '';
+        }
+    }
+    return stations;
+}
+
+// Parse a PLS playlist into {name, url} entries
+function parsePLS(text) {
+    const files = {};
+    const titles = {};
+    for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        const fileMatch = line.match(/^File(\d+)\s*=\s*(.+)$/i);
+        const titleMatch = line.match(/^Title(\d+)\s*=\s*(.+)$/i);
+        if (fileMatch) files[fileMatch[1]] = fileMatch[2].trim();
+        else if (titleMatch) titles[titleMatch[1]] = titleMatch[2].trim();
+    }
+    return Object.keys(files).map(n => ({ name: titles[n] || files[n], url: files[n] }));
+}
+
+// Parse an OPML document into {name, url} entries
+function parseOPML(text) {
+    const stations = [];
+    const doc = new DOMParser().parseFromString(text, 'text/xml');
+    doc.querySelectorAll('outline').forEach(outline => {
+        const url = outline.getAttribute('url') || outline.getAttribute('xmlUrl') || outline.getAttribute('URL');
+        const name = outline.getAttribute('text') || outline.getAttribute('title') || url;
+        if (url && /^https?:/i.test(url)) {
+            stations.push({ name: name, url: url });
+        }
+    });
+    return stations;
+}
+
+// Add parsed {name, url} entries to the custom stations list
+async function importPlaylistStations(entries) {
+    let added = 0;
+    for (const entry of entries) {
+        if (!entry.url || !/^https?:/i.test(entry.url)) continue;
+        if (customStations.some(s => s.url === entry.url)) continue;
+
+        const station = {
+            stationuuid: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            name: entry.name || 'Імпортована станція',
+            url: entry.url,
+            url_resolved: entry.url,
+            tags: '',
+            country: 'Імпортовано',
+            favicon: getFaviconFromUrl(entry.url),
+            bitrate: 0,
+            codec: ''
+        };
+        customStations.push(station);
+        added++;
+
+        if (db) {
+            try {
+                await db.execute(
+                    'INSERT OR REPLACE INTO custom_stations (stationuuid, name, url, genre, data) VALUES ($1, $2, $3, $4, $5)',
+                    [station.stationuuid, station.name, station.url, '', JSON.stringify(station)]
+                );
+            } catch (e) { console.error('Import playlist error:', e); }
+        }
+    }
+    localStorage.setItem('customStations', JSON.stringify(customStations));
+    renderCustomStations();
+    alert(`Імпортовано станцій: ${added}`);
+}
+
+// Import the app's own JSON export format (favorites or custom stations)
+function importStationsJson(text) {
+    const data = JSON.parse(text);
+
+    if (!Array.isArray(data)) {
+        alert('Неправильний формат файлу');
+        return;
+    }
+
+    const isCustom = data.some(s => s.stationuuid && s.stationuuid.startsWith('custom_'));
+
+    if (isCustom) {
+        for (const station of data) {
+            if (!customStations.some(s => s.stationuuid === station.stationuuid)) {
+                customStations.push(station);
+                if (db) {
+                    db.execute(
+                        'INSERT OR REPLACE INTO custom_stations (stationuuid, name, url, genre, data) VALUES ($1, $2, $3, $4, $5)',
+                        [station.stationuuid, station.name, station.url, station.tags || '', JSON.stringify(station)]
+                    ).catch(e => console.error('Import custom error:', e));
+                }
+            }
+        }
+        localStorage.setItem('customStations', JSON.stringify(customStations));
+        renderCustomStations();
+        alert('Власні станції імпортовано');
+    } else {
+        for (const station of data) {
+            if (!favorites.some(f => f.stationuuid === station.stationuuid)) {
+                favorites.push(station);
+                if (db) {
+                    db.execute(
+                        'INSERT OR REPLACE INTO favorites (stationuuid, name, url, url_resolved, favicon, country, data) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+                        [station.stationuuid, station.name, station.url, station.url_resolved || '', station.favicon || '', station.country || '', JSON.stringify(station)]
+                    ).catch(e => console.error('Import favorite error:', e));
+                }
+            }
+        }
+        localStorage.setItem('favorites', JSON.stringify(favorites));
+        alert('Обрані станції імпортовано');
+    }
+}
+
+// Import stations from a JSON, M3U/M3U8, PLS or OPML file
 function importStations(event) {
     const file = event.target.files[0];
     if (!file) return;
 
+    const ext = file.name.toLowerCase().split('.').pop();
     const reader = new FileReader();
+
     reader.onload = (e) => {
+        const text = e.target.result;
         try {
-            const data = JSON.parse(e.target.result);
-
-            if (!Array.isArray(data)) {
-                alert('Неправильний формат файлу');
-                return;
-            }
-
-            const isCustom = data.some(s => s.stationuuid && s.stationuuid.startsWith('custom_'));
-
-            if (isCustom) {
-                for (const station of data) {
-                    if (!customStations.some(s => s.stationuuid === station.stationuuid)) {
-                        customStations.push(station);
-                        if (db) {
-                            db.execute(
-                                'INSERT OR REPLACE INTO custom_stations (stationuuid, name, url, genre, data) VALUES ($1, $2, $3, $4, $5)',
-                                [station.stationuuid, station.name, station.url, station.tags || '', JSON.stringify(station)]
-                            ).catch(e => console.error('Import custom error:', e));
-                        }
-                    }
-                }
-                renderCustomStations();
-                alert('Власні станції імпортовано');
+            if (ext === 'm3u' || ext === 'm3u8') {
+                importPlaylistStations(parseM3U(text));
+            } else if (ext === 'pls') {
+                importPlaylistStations(parsePLS(text));
+            } else if (ext === 'opml' || ext === 'xml') {
+                importPlaylistStations(parseOPML(text));
             } else {
-                for (const station of data) {
-                    if (!favorites.some(f => f.stationuuid === station.stationuuid)) {
-                        favorites.push(station);
-                        if (db) {
-                            db.execute(
-                                'INSERT OR REPLACE INTO favorites (stationuuid, name, url, url_resolved, favicon, country, data) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-                                [station.stationuuid, station.name, station.url, station.url_resolved || '', station.favicon || '', station.country || '', JSON.stringify(station)]
-                            ).catch(e => console.error('Import favorite error:', e));
-                        }
-                    }
-                }
-                alert('Обрані станції імпортовано');
+                importStationsJson(text);
             }
         } catch (error) {
             alert('Помилка читання файлу: ' + error.message);
@@ -1670,6 +1956,8 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
 
         if (genre === 'favorites') {
             showFavorites();
+        } else if (genre === 'somafm') {
+            loadSomaFM();
         } else {
             searchStations('', genre);
         }
@@ -1727,4 +2015,3 @@ document.addEventListener('keydown', (e) => {
 
 // Initialize and load
 init();
-loadPopularStations();

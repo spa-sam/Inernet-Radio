@@ -300,6 +300,7 @@ fn first_stream_url(body: &str) -> Option<String> {
 async fn open_audio_stream(
     url: &str,
     hops: u8,
+    raw: bool,
 ) -> Result<(BufReader<Box<dyn AsyncStream>>, String), Box<dyn std::error::Error + Send + Sync>> {
     if hops >= 5 {
         return Err("too many redirects".into());
@@ -374,11 +375,12 @@ async fn open_audio_stream(
     // Follow HTTP redirects
     if (300..400).contains(&status) && !location.is_empty() {
         let next = resolve_location(url, &location);
-        return Box::pin(open_audio_stream(&next, hops + 1)).await;
+        return Box::pin(open_audio_stream(&next, hops + 1, raw)).await;
     }
 
-    // Resolve .pls / .m3u playlists to the underlying stream URL
-    if is_playlist(&content_type, url) {
+    // Resolve .pls / .m3u playlists to the underlying stream URL.
+    // Skipped in raw mode so HLS manifests reach hls.js untouched.
+    if !raw && is_playlist(&content_type, url) {
         let body = timeout(Duration::from_secs(5), async {
             let mut buf = vec![0u8; 8192];
             let n = reader.read(&mut buf).await?;
@@ -391,7 +393,7 @@ async fn open_audio_stream(
         let body_text = String::from_utf8_lossy(&body);
         let stream_url =
             first_stream_url(&body_text).ok_or("playlist has no stream url")?;
-        return Box::pin(open_audio_stream(&stream_url, hops + 1)).await;
+        return Box::pin(open_audio_stream(&stream_url, hops + 1, raw)).await;
     }
 
     let content_type = if content_type.is_empty() {
@@ -426,11 +428,18 @@ async fn handle_proxy_client(
         return Ok(());
     }
 
-    let target_url = percent_encoding::percent_decode_str(&uri[12..])
+    // Split "url=<encoded>" from any extra query params (e.g. raw=1).
+    // The encoded URL never contains a literal '&', so the first '&'
+    // marks the start of additional parameters.
+    let query = &uri[12..];
+    let (encoded_url, params) = query.split_once('&').unwrap_or((query, ""));
+    let raw = params.contains("raw=1");
+
+    let target_url = percent_encoding::percent_decode_str(encoded_url)
         .decode_utf8_lossy()
         .into_owned();
 
-    match open_audio_stream(&target_url, 0).await {
+    match open_audio_stream(&target_url, 0, raw).await {
         Ok((mut remote_reader, content_type)) => {
             write_proxy_headers(&mut client_stream, &content_type).await?;
             let (_, mut client_write_half) = tokio::io::split(client_stream);

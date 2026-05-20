@@ -633,6 +633,25 @@ body {
     box-shadow: 0 0 8px rgba(255, 118, 117, 0.4);
 }
 
+/* SomaFM source preset */
+.preset-somafm {
+    background: rgba(142, 68, 173, 0.12);
+    color: #c39bd3;
+    border-color: rgba(142, 68, 173, 0.25);
+}
+
+.preset-somafm:hover {
+    background: rgba(142, 68, 173, 0.22);
+    color: #fff;
+}
+
+.preset-somafm.active {
+    background: var(--secondary-color);
+    color: #fff;
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 8px var(--secondary-glow);
+}
+
 /* Recently Played Section */
 .recently-played-section {
     margin-bottom: 0.75rem;
