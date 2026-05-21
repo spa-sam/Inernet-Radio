@@ -48,9 +48,9 @@ const playIcon = playBtn.querySelector('.play-icon');
 const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 const volumeSlider = document.getElementById('volume');
-const volumeUpBtn = document.getElementById('volume-up');
-const volumeDownBtn = document.getElementById('volume-down');
-const volumeSectionsContainer = document.getElementById('volume-sections');
+const volumeMuteBtn = document.getElementById('volume-mute');
+const volumeBar = document.querySelector('.volume-bar');
+const volumeValueLabel = document.getElementById('volume-value');
 const searchInput = document.getElementById('search-input');
 const searchBtn = document.getElementById('search-btn');
 const stationsList = document.getElementById('stations-list');
@@ -419,9 +419,8 @@ async function init() {
         visualizerCanvas.classList.add('hidden');
     }
 
-    // Initialize volume sections
-    initVolumeSections();
-    updateVolumeSections(volumeSlider.value);
+    // Initialize volume control
+    setVolume(volumeSlider.value);
 
     // Render recently played
     renderRecentlyPlayed();
@@ -453,49 +452,35 @@ async function init() {
     loadPopularStations();
 }
 
-// Volume sections
-function initVolumeSections() {
-    volumeSectionsContainer.innerHTML = '';
-    for (let i = 1; i <= 10; i++) {
-        const section = document.createElement('div');
-        section.className = 'volume-section';
-        section.dataset.level = i;
-        section.addEventListener('click', () => {
-            setVolume(i * 10);
-        });
-        volumeSectionsContainer.appendChild(section);
+// Volume control
+let lastVolumeBeforeMute = 70;
+
+function setVolume(volume) {
+    volume = Math.max(0, Math.min(100, parseInt(volume) || 0));
+    volumeSlider.value = volume;
+    audioPlayer.volume = volume / 100;
+    // Drive the slider fill gradient and the percentage label
+    volumeSlider.style.setProperty('--vol', volume + '%');
+    volumeValueLabel.textContent = volume + '%';
+    volumeBar.classList.toggle('muted', volume === 0);
+}
+
+function toggleMute() {
+    const current = parseInt(volumeSlider.value);
+    if (current > 0) {
+        lastVolumeBeforeMute = current;
+        setVolume(0);
+    } else {
+        setVolume(lastVolumeBeforeMute > 0 ? lastVolumeBeforeMute : 70);
     }
 }
 
-function updateVolumeSections(volume) {
-    const activeLevel = Math.ceil(volume / 10);
-    const sections = volumeSectionsContainer.querySelectorAll('.volume-section');
-
-    sections.forEach((section, index) => {
-        const level = index + 1;
-        section.className = 'volume-section';
-
-        if (level <= activeLevel) {
-            section.classList.add('active-' + level);
-        }
-    });
-}
-
-function setVolume(volume) {
-    volume = Math.max(0, Math.min(100, volume));
-    volumeSlider.value = volume;
-    audioPlayer.volume = volume / 100;
-    updateVolumeSections(volume);
-}
-
 function volumeUp() {
-    const currentVolume = parseInt(volumeSlider.value);
-    setVolume(currentVolume + 10);
+    setVolume(parseInt(volumeSlider.value) + 5);
 }
 
 function volumeDown() {
-    const currentVolume = parseInt(volumeSlider.value);
-    setVolume(currentVolume - 10);
+    setVolume(parseInt(volumeSlider.value) - 5);
 }
 
 // Search stations by name and filters
@@ -2192,8 +2177,7 @@ volumeSlider.addEventListener('input', (e) => {
     setVolume(e.target.value);
 });
 
-volumeUpBtn.addEventListener('click', volumeUp);
-volumeDownBtn.addEventListener('click', volumeDown);
+volumeMuteBtn.addEventListener('click', toggleMute);
 
 searchBtn.addEventListener('click', () => {
     const query = searchInput.value.trim();
@@ -2367,6 +2351,14 @@ document.addEventListener('keydown', (e) => {
             break;
         case 'ArrowLeft':
             prevStation();
+            break;
+        case 'ArrowUp':
+            e.preventDefault();
+            volumeUp();
+            break;
+        case 'ArrowDown':
+            e.preventDefault();
+            volumeDown();
             break;
     }
 });
