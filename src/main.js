@@ -1007,6 +1007,9 @@ function drawVisualization() {
         const smoothing = 0.65;
         const usableDataLength = Math.floor(dataArray.length * 0.6);
 
+        // Явно вимикаємо розмиття, яке могло залишитися від інших пресетів
+        ctx.shadowBlur = 0;
+
         // Ініціалізуємо піки та затримку, якщо вони ще не створені або кількість смуг змінилася
         if (style === 'peaks' && (!barPeaks || barPeaks.length !== numBars)) {
             barPeaks = new Float32Array(numBars).fill(height);
@@ -1030,46 +1033,38 @@ function drawVisualization() {
 
             const barHeight = Math.max(3, (smoothedData[i] / 255) * height);
 
-            // Малюємо основну смугу
-            const grad = ctx.createLinearGradient(0, height, 0, height - barHeight);
-            grad.addColorStop(0, baseColor);
-            grad.addColorStop(1, adjustBrightness(baseColor, 1.4));
-
-            ctx.fillStyle = grad;
+            // Малюємо основну смугу (чітку, без тіней)
+            ctx.fillStyle = baseColor;
 
             const x = i * barWidth + gap / 2;
             const w = barWidth - gap;
             const y = height - barHeight;
 
             ctx.beginPath();
-            ctx.roundRect(x, y, w, barHeight, [4, 4, 0, 0]);
+            ctx.roundRect(x, y, w, barHeight, [2, 2, 0, 0]);
             ctx.fill();
 
             // Обробка ефекту піків (зависання та падіння)
             if (style === 'peaks') {
                 const peakY = height - barHeight - 4; // Позиція над смугою
                 
-                // Якщо нова висота вища за поточний пік (палиця штовхає пік вгору)
                 if (peakY < barPeaks[i]) {
                     barPeaks[i] = peakY;
-                    peakHold[i] = 25; // Зависання на 25 кадрів (~0.4 сек при 60fps)
+                    peakHold[i] = 30; // Трохи збільшив час зависання
                 } else {
-                    // Якщо час зависання ще не вийшов
                     if (peakHold[i] > 0) {
                         peakHold[i]--;
                     } else {
-                        // Починаємо падіння, коли час зависання вийшов
-                        barPeaks[i] += 1.2; // Швидкість падіння
+                        barPeaks[i] += 1.5; // Трохи швидше падіння для різкості
                     }
                 }
 
-                // Обмежуємо пік підлогою
                 if (barPeaks[i] > height - 4) barPeaks[i] = height - 4;
 
-                // Малюємо пік, що завис
-                ctx.fillStyle = adjustBrightness(baseColor, 1.6);
+                // Малюємо пік тим самим кольором, що й основна смуга
+                ctx.fillStyle = baseColor; 
                 ctx.beginPath();
-                ctx.roundRect(x, barPeaks[i], w, 2, [1, 1, 1, 1]);
+                ctx.roundRect(x, barPeaks[i], w, 2, [0, 0, 0, 0]);
                 ctx.fill();
             }
         }
