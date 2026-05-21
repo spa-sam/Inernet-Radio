@@ -172,6 +172,8 @@ let dataArray = null;
 let animationId = null;
 let sourceNode = null;
 let smoothedData = null;
+let barPeaks = null; // Для зберігання позицій пікових смуг
+let peakHold = null; // Для затримки піків перед падінням
 let lastTrackTitle = '';
 
 // Check if Tauri is available
@@ -998,12 +1000,18 @@ function drawVisualization() {
     const sensitivity = settings.visualizerSensitivity || 1.0;
     const style = settings.visualizerStyle || 'bars';
 
-    if (style === 'bars') {
+    if (style === 'bars' || style === 'peaks') {
         const numBars = 24;
         const barWidth = width / numBars;
         const gap = 3;
         const smoothing = 0.65;
         const usableDataLength = Math.floor(dataArray.length * 0.6);
+
+        // Ініціалізуємо піки та затримку, якщо вони ще не створені або кількість смуг змінилася
+        if (style === 'peaks' && (!barPeaks || barPeaks.length !== numBars)) {
+            barPeaks = new Float32Array(numBars).fill(height);
+            peakHold = new Int32Array(numBars).fill(0);
+        }
 
         for (let i = 0; i < numBars; i++) {
             const startFreq = Math.floor((i / numBars) * usableDataLength);
@@ -1022,6 +1030,7 @@ function drawVisualization() {
 
             const barHeight = Math.max(3, (smoothedData[i] / 255) * height);
 
+            // Малюємо основну смугу
             const grad = ctx.createLinearGradient(0, height, 0, height - barHeight);
             grad.addColorStop(0, baseColor);
             grad.addColorStop(1, adjustBrightness(baseColor, 1.4));
@@ -1035,6 +1044,34 @@ function drawVisualization() {
             ctx.beginPath();
             ctx.roundRect(x, y, w, barHeight, [4, 4, 0, 0]);
             ctx.fill();
+
+            // Обробка ефекту піків (зависання та падіння)
+            if (style === 'peaks') {
+                const peakY = height - barHeight - 4; // Позиція над смугою
+                
+                // Якщо нова висота вища за поточний пік (палиця штовхає пік вгору)
+                if (peakY < barPeaks[i]) {
+                    barPeaks[i] = peakY;
+                    peakHold[i] = 25; // Зависання на 25 кадрів (~0.4 сек при 60fps)
+                } else {
+                    // Якщо час зависання ще не вийшов
+                    if (peakHold[i] > 0) {
+                        peakHold[i]--;
+                    } else {
+                        // Починаємо падіння, коли час зависання вийшов
+                        barPeaks[i] += 1.2; // Швидкість падіння
+                    }
+                }
+
+                // Обмежуємо пік підлогою
+                if (barPeaks[i] > height - 4) barPeaks[i] = height - 4;
+
+                // Малюємо пік, що завис
+                ctx.fillStyle = adjustBrightness(baseColor, 1.6);
+                ctx.beginPath();
+                ctx.roundRect(x, barPeaks[i], w, 2, [1, 1, 1, 1]);
+                ctx.fill();
+            }
         }
     } else if (style === 'wave') {
         analyser.getByteTimeDomainData(dataArray);
@@ -1066,25 +1103,28 @@ function drawVisualization() {
     } else if (style === 'circle') {
         const centerX = width / 2;
         const centerY = height / 2;
-        const radius = Math.min(centerX, centerY) * 0.45;
-        const numBars = 48;
-        const usableDataLength = Math.floor(dataArray.length * 0.7);
+        const radiusX = (width / 2) * 0.8;
+        const radiusY = (height / 2) * 0.6;
+        const numBars = 64;
+        // Використовуємо меншу частину даних (низькі та середні), де найбільше активності
+        const usableDataLength = Math.floor(dataArray.length * 0.55);
 
-        ctx.shadowBlur = 6;
+        ctx.shadowBlur = 10;
         ctx.shadowColor = baseColor;
 
         for (let i = 0; i < numBars; i++) {
+            // Використовуємо логарифмічне або більш щільне відображення частот
             const freqIndex = Math.floor((i / numBars) * usableDataLength);
             const value = dataArray[freqIndex] * sensitivity;
-            const barHeight = (value / 255) * 20;
+            const barHeight = (value / 255) * 25;
 
             const angle = (i / numBars) * Math.PI * 2;
 
-            const x1 = centerX + Math.cos(angle) * radius;
-            const y1 = centerY + Math.sin(angle) * radius;
+            const x1 = centerX + Math.cos(angle) * radiusX;
+            const y1 = centerY + Math.sin(angle) * radiusY;
 
-            const x2 = centerX + Math.cos(angle) * (radius + barHeight);
-            const y2 = centerY + Math.sin(angle) * (radius + barHeight);
+            const x2 = centerX + Math.cos(angle) * (radiusX + barHeight);
+            const y2 = centerY + Math.sin(angle) * (radiusY + barHeight);
 
             ctx.beginPath();
             ctx.moveTo(x1, y1);
@@ -1095,7 +1135,76 @@ function drawVisualization() {
             ctx.stroke();
         }
 
-        ctx.shadowBlur = 0; 
+        ctx.shadowBlur = 0;
+    } else if (style === 'mirror') {
+        const numBars = 32;
+        const barWidth = width / numBars;
+        const usableDataLength = Math.floor(dataArray.length * 0.6);
+        const centerY = height / 2;
+
+        for (let i = 0; i < numBars; i++) {
+            const freqIndex = Math.floor((i / numBars) * usableDataLength);
+            const value = (dataArray[freqIndex] / 255) * (height / 2) * sensitivity;
+            
+            const x = i * barWidth;
+            const w = barWidth - 2;
+            
+            ctx.fillStyle = baseColor;
+            ctx.globalAlpha = 0.8;
+            ctx.fillRect(x, centerY - value, w, value);
+            
+            ctx.fillStyle = adjustBrightness(baseColor, 0.6);
+            ctx.globalAlpha = 0.4;
+            ctx.fillRect(x, centerY, w, value);
+            ctx.globalAlpha = 1.0;
+        }
+    } else if (style === 'dance') {
+        const numBars = 20;
+        const barWidth = width / numBars;
+        const gap = 4;
+        const centerY = height / 2;
+        const usableDataLength = Math.floor(dataArray.length * 0.5);
+
+        // Визначаємо інтенсивність басів для пульсації "сцени"
+        let bassSum = 0;
+        for (let j = 0; j < 5; j++) bassSum += dataArray[j];
+        const bassInten = (bassSum / (5 * 255)) * sensitivity;
+        
+        // Малюємо легке фонове сяйво, що пульсує з басом
+        if (bassInten > 0.4) {
+            const glow = ctx.createRadialGradient(width/2, centerY, 10, width/2, centerY, width/2);
+            glow.addColorStop(0, adjustBrightness(baseColor, 0.3));
+            glow.addColorStop(1, 'transparent');
+            ctx.globalAlpha = bassInten * 0.2;
+            ctx.fillStyle = glow;
+            ctx.fillRect(0, 0, width, height);
+            ctx.globalAlpha = 1.0;
+        }
+
+        for (let i = 0; i < numBars; i++) {
+            const freqIndex = Math.floor((i / numBars) * usableDataLength);
+            const value = (dataArray[freqIndex] / 255) * (height / 2.5) * sensitivity;
+            
+            const x = i * barWidth + gap / 2;
+            const w = barWidth - gap;
+            const yTop = centerY - value - 2;
+            const barHeight = (value * 2) + 4;
+
+            // Ефект градієнту від центру до країв
+            const grad = ctx.createLinearGradient(0, centerY - value, 0, centerY + value);
+            grad.addColorStop(0, adjustBrightness(baseColor, 1.5));
+            grad.addColorStop(0.5, baseColor);
+            grad.addColorStop(1, adjustBrightness(baseColor, 1.5));
+
+            ctx.fillStyle = grad;
+            ctx.shadowBlur = 12 * (value / (height/2));
+            ctx.shadowColor = baseColor;
+            
+            ctx.beginPath();
+            ctx.roundRect(x, yTop, w, barHeight, [w/2, w/2, w/2, w/2]);
+            ctx.fill();
+        }
+        ctx.shadowBlur = 0;
     }
 
     animationId = requestAnimationFrame(drawVisualization);
@@ -2052,6 +2161,17 @@ function changeVisualizerColor() {
     saveSetting('visualizerColor', settings.visualizerColor);
 }
 
+function cycleVisualizerStyle() {
+    const styles = ['bars', 'peaks', 'wave', 'circle', 'mirror', 'dance'];
+    let currentIndex = styles.indexOf(settings.visualizerStyle || 'bars');
+    let nextIndex = (currentIndex + 1) % styles.length;
+    let nextStyle = styles[nextIndex];
+
+    settings.visualizerStyle = nextStyle;
+    visualizerStyleSelect.value = nextStyle;
+    saveSetting('visualizerStyle', nextStyle);
+}
+
 // Target window size for the current (non-compact) layout
 function getNormalWindowSize() {
     return settings.wideMode
@@ -2331,6 +2451,7 @@ importFile.addEventListener('change', importStations);
 compactModeCheckbox.addEventListener('change', () => toggleCompactMode());
 visualizerEnabledCheckbox.addEventListener('change', toggleVisualizer);
 visualizerColorPicker.addEventListener('input', changeVisualizerColor);
+visualizerCanvas.addEventListener('click', cycleVisualizerStyle);
 enterCompactBtn.addEventListener('click', enterCompactMode);
 exitCompactBtn.addEventListener('click', exitCompactMode);
 alwaysOnTopBtn.addEventListener('click', toggleAlwaysOnTop);
