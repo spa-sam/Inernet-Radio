@@ -6,7 +6,7 @@ use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WindowEvent,
+    Manager,
 };
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -512,6 +512,13 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
+        // Persist the window size between sessions (size only — position
+        // stays centered, visibility is left to the tray logic).
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(tauri_plugin_window_state::StateFlags::SIZE)
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![get_stream_metadata, get_proxy_port])
         .setup(|app| {
             let port = tauri::async_runtime::block_on(async {
@@ -558,13 +565,6 @@ fn main() {
                 .build(app)?;
 
             Ok(())
-        })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                // Hide window instead of closing
-                let _ = window.hide();
-                api.prevent_close();
-            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

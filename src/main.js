@@ -2052,7 +2052,11 @@ async function applyViewMode(wide, isInit = false) {
             const appWindow = getCurrentWindow();
             const size = getNormalWindowSize();
             await appWindow.setMinSize(new LogicalSize(size.minW, size.minH));
-            await appWindow.setSize(new LogicalSize(size.w, size.h));
+            // On startup keep the size restored by the window-state plugin;
+            // only an explicit narrow/wide switch resets it to the layout default.
+            if (!isInit) {
+                await appWindow.setSize(new LogicalSize(size.w, size.h));
+            }
         } catch (e) {
             console.error('Failed to resize window for view mode:', e);
         }
