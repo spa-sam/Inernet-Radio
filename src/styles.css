@@ -1416,7 +1416,10 @@ body {
 }
 
 /* ==========================================================================
-   COMPACT WIDGET MODE (mini always-on-top player)
+   COMPACT WIDGET MODE (always-on-top mini player)
+   The widget keeps the .wide class while active, so it reuses the full
+   studio player card. Only the app header and the search / stations
+   sidebar are dropped.
    ========================================================================== */
 .container.compact {
     max-width: 100%;
@@ -1424,37 +1427,14 @@ body {
 }
 .container.compact .app-header,
 .container.compact .radio-side,
-.container.compact .track-card,
-.container.compact .station-meta,
-.container.compact .now-eyebrow,
-.container.compact .station-sub,
-.container.compact .spectrum-head,
-.container.compact .spectrum-axis,
-.container.compact .transport-info,
-.container.compact .volume-bar,
 .container.compact #enter-compact-btn {
     display: none !important;
 }
-.container.compact .radio-layout { padding: 0; gap: 0; }
-.container.compact .player-section {
-    border-radius: 0;
-    border: none;
-    height: 100vh;
-    padding: 0.5rem 0.6rem;
-    justify-content: center;
-    gap: 0.5rem;
-    box-shadow: none;
+/* The player column fills the whole widget width */
+.container.compact .radio-main {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    padding: 0;
 }
-.container.compact .player-stage { gap: 0.6rem; }
-.container.compact .station-logo-container { width: 46px; height: 46px; }
-.container.compact .station-logo-glow { display: none; }
-.container.compact #station-name { font-size: 1rem; }
-.container.compact .player-transport { gap: 0.5rem; }
-.container.compact .play-btn { width: 36px; height: 36px; }
-.container.compact .play-btn svg { width: 16px; height: 16px; }
-.container.compact .nav-btn { width: 28px; height: 28px; }
-.container.compact .visualizer { height: 30px; }
 .container.compact #exit-compact-btn { display: flex; }
-.container.compact .window-controls { top: 6px; right: 6px; gap: 4px; }
-.container.compact .control-circle-btn { width: 21px; height: 21px; }
-.container.compact .control-circle-btn svg { width: 10px; height: 10px; }

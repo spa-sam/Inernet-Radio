@@ -63,6 +63,7 @@ const metaCodec = document.getElementById('meta-codec');
 const metaCountry = document.getElementById('meta-country');
 const visualizerCanvas = document.getElementById('visualizer');
 const appContainer = document.getElementById('app-container');
+const playerSection = document.querySelector('.player-section');
 
 // Search Filters Panel elements
 const filtersToggleBtn = document.getElementById('filters-toggle-btn');
@@ -1937,6 +1938,21 @@ function importStations(event) {
     event.target.value = '';
 }
 
+// Wait until the webview viewport changes after a window resize
+function waitForWindowResize(timeout = 250) {
+    return new Promise(resolve => {
+        let settled = false;
+        const done = () => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener('resize', done);
+            resolve();
+        };
+        window.addEventListener('resize', done);
+        setTimeout(done, timeout);
+    });
+}
+
 // Settings
 async function toggleCompactMode(forceCompact = null) {
     if (forceCompact !== null) {
@@ -1947,11 +1963,10 @@ async function toggleCompactMode(forceCompact = null) {
     }
     saveSetting('compactMode', settings.compactMode);
 
-    // The compact widget is its own layout: drop the wide class while active
-    // so the two-column rules cannot leak into the mini player.
+    // The compact widget reuses the wide studio player card; only the
+    // header and the search / stations sidebar are hidden (via CSS).
     if (settings.compactMode) {
-        appContainer.classList.add('compact');
-        appContainer.classList.remove('wide');
+        appContainer.classList.add('compact', 'wide');
     } else {
         appContainer.classList.remove('compact');
         appContainer.classList.toggle('wide', settings.wideMode);
@@ -1963,8 +1978,22 @@ async function toggleCompactMode(forceCompact = null) {
             const appWindow = getCurrentWindow();
 
             if (settings.compactMode) {
-                await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(380, 150));
-                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(420, 160));
+                // Fit the widget height to the player card. Apply the compact
+                // width first, wait for the webview to reflow, then shrink the
+                // window so its content area matches the card exactly. The
+                // title-bar height self-calibrates — no window getters needed.
+                const W = window.__TAURI__.window;
+                await appWindow.setMinSize(new W.LogicalSize(380, 420));
+                const reflowed = waitForWindowResize();
+                await appWindow.setSize(new W.LogicalSize(470, 740));
+                await reflowed;
+                const cardHeight = playerSection.getBoundingClientRect().height;
+                // 32px = .radio-layout padding (1rem top + bottom), +2px guard
+                const neededInner = Math.ceil(cardHeight) + 34;
+                const delta = neededInner - window.innerHeight;
+                if (delta !== 0) {
+                    await appWindow.setSize(new W.LogicalSize(470, 740 + delta));
+                }
             } else {
                 const size = getNormalWindowSize();
                 await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(size.minW, size.minH));
