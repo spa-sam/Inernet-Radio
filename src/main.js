@@ -107,9 +107,23 @@ const visualizerColorPicker = document.getElementById('visualizer-color');
 const enterCompactBtn = document.getElementById('enter-compact-btn');
 const exitCompactBtn = document.getElementById('exit-compact-btn');
 const alwaysOnTopBtn = document.getElementById('always-on-top-btn');
+const viewModeSelect = document.getElementById('view-mode-select');
+
+// Layout / header elements
+const viewSwitch = document.getElementById('view-switch');
+const brandStatus = document.getElementById('brand-status');
+const stationSub = document.getElementById('station-sub');
+const stationsCount = document.getElementById('stations-count');
+const transportQuality = document.getElementById('transport-quality');
+const liveTimer = document.getElementById('live-timer');
+const trackCard = document.getElementById('track-card');
+const trackCardThumb = document.getElementById('track-card-thumb');
+const trackCopyBtn = document.getElementById('track-copy-btn');
 
 // State
 let isAlwaysOnTop = false;
+let liveTimerInterval = null;
+let liveTimerSeconds = 0;
 let currentStation = null;
 let isPlaying = false;
 let metadataInterval = null;
@@ -135,10 +149,11 @@ const MAX_RECONNECT = 3;
 let searchDebounce = null;
 
 // Settings state
-let settings = { 
-    compactMode: false, 
-    visualizerEnabled: true, 
-    visualizerColor: '#00b894',
+let settings = {
+    compactMode: false,
+    wideMode: false,
+    visualizerEnabled: true,
+    visualizerColor: '#ff5a36',
     visualizerStyle: 'bars',
     visualizerSensitivity: 1.0
 };
@@ -300,6 +315,7 @@ async function loadDataFromDb() {
         const settingsRows = await db.select('SELECT * FROM settings');
         settingsRows.forEach(row => {
             if (row.key === 'compactMode') settings.compactMode = row.value === 'true';
+            if (row.key === 'wideMode') settings.wideMode = row.value === 'true';
             if (row.key === 'visualizerEnabled') settings.visualizerEnabled = row.value === 'true';
             if (row.key === 'visualizerColor') settings.visualizerColor = row.value;
             if (row.key === 'visualizerStyle') settings.visualizerStyle = row.value;
@@ -385,12 +401,19 @@ async function init() {
     visualizerEnabledCheckbox.checked = settings.visualizerEnabled;
     visualizerStyleSelect.value = settings.visualizerStyle || 'bars';
     visualizerSensitivityInput.value = settings.visualizerSensitivity || 1.0;
-    visualizerColorPicker.value = settings.visualizerColor || '#00b894';
+    visualizerColorPicker.value = settings.visualizerColor || '#ff5a36';
+    viewModeSelect.value = settings.wideMode ? 'wide' : 'narrow';
+
+    // Apply narrow / wide layout
+    applyViewMode(settings.wideMode, true);
 
     // Apply compact mode with window resize
     if (settings.compactMode) {
         toggleCompactMode(true);
     }
+
+    // Reflect initial OFF AIR state
+    updateBrandStatus();
 
     if (!settings.visualizerEnabled) {
         visualizerCanvas.classList.add('hidden');
@@ -410,6 +433,7 @@ async function init() {
         updateMetadata(lastStation);
         updateCurrentStationInfo();
         stationLogo.classList.remove('hidden');
+        const restoredLogo = lastStation.favicon || generatePlaceholderLogo(lastStation.name);
         if (lastStation.favicon) {
             stationLogo.src = lastStation.favicon;
             stationLogo.onerror = function() {
@@ -417,8 +441,9 @@ async function init() {
                 this.onerror = null;
             };
         } else {
-            stationLogo.src = generatePlaceholderLogo(lastStation.name);
+            stationLogo.src = restoredLogo;
         }
+        if (trackCardThumb) trackCardThumb.style.backgroundImage = `url("${restoredLogo}")`;
     }
 
     // Load custom stations
@@ -643,6 +668,11 @@ async function loadSomaFM() {
 function renderStations(stations, container = stationsList) {
     container.innerHTML = '';
 
+    // Update the station count badge (only for the main list)
+    if (container === stationsList && stationsCount) {
+        stationsCount.textContent = stations.length ? `${stations.length} stations` : '';
+    }
+
     stations.forEach((station, index) => {
         const item = document.createElement('div');
         item.className = 'station-item';
@@ -776,6 +806,9 @@ function updateMetadata(station) {
     } else {
         metaCountry.classList.add('hidden');
     }
+
+    // Secondary info lines used by the wide layout
+    updateStationDetails(station);
 }
 
 // Clear metadata display
@@ -823,6 +856,8 @@ function setConnectionState(state) {
     } else if (state === 'playing') {
         nowPlayingTrack.textContent = lastTrackTitle ? '♪ ' + lastTrackTitle : '';
     }
+    // Scroll the track line if it overflows its card
+    applyMarquee(nowPlayingTrack);
 }
 
 // Schedule an automatic reconnect after the stream drops
@@ -864,6 +899,7 @@ async function fetchStreamMetadata(url) {
         if (metadata && metadata.title) {
             const cleanTitle = metadata.title.trim();
             nowPlayingTrack.textContent = '♪ ' + cleanTitle;
+            applyMarquee(nowPlayingTrack);
             showSongNotification(currentStation.name, cleanTitle);
         }
     } catch (error) {
@@ -1122,6 +1158,7 @@ function selectStation(station, itemElement) {
     updateCurrentStationInfo();
 
     stationLogo.classList.remove('hidden');
+    const logoSrc = station.favicon || generatePlaceholderLogo(station.name);
     if (station.favicon) {
         stationLogo.src = station.favicon;
         stationLogo.onerror = function() {
@@ -1129,8 +1166,9 @@ function selectStation(station, itemElement) {
             this.onerror = null;
         };
     } else {
-        stationLogo.src = generatePlaceholderLogo(station.name);
+        stationLogo.src = logoSrc;
     }
+    if (trackCardThumb) trackCardThumb.style.backgroundImage = `url("${logoSrc}")`;
 
     document.querySelectorAll('.station-item').forEach(item => {
         item.classList.remove('active');
@@ -1153,6 +1191,7 @@ function onPlaySuccess() {
     updatePlayButton();
     startMetadataPolling();
     startVisualization();
+    startLiveTimer();
     addToRecentlyPlayed(currentStation);
 }
 
@@ -1275,7 +1314,9 @@ function stopStation() {
     updatePlayButton();
     stopMetadataPolling();
     stopVisualization();
+    stopLiveTimer();
     nowPlayingTrack.textContent = '';
+    nowPlayingTrack.classList.remove('marquee');
     if (previewBtn) {
         previewBtn.textContent = 'Прослухати';
     }
@@ -1305,6 +1346,9 @@ function updatePlayButton() {
         playIcon.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
         playBtn.classList.remove('playing');
     }
+    // Drive the LIVE badges and the "ON AIR" indicator
+    appContainer.classList.toggle('playing', isPlaying);
+    updateBrandStatus();
 }
 
 // Recently played functions
@@ -1918,10 +1962,14 @@ async function toggleCompactMode(forceCompact = null) {
     }
     saveSetting('compactMode', settings.compactMode);
 
+    // The compact widget is its own layout: drop the wide class while active
+    // so the two-column rules cannot leak into the mini player.
     if (settings.compactMode) {
         appContainer.classList.add('compact');
+        appContainer.classList.remove('wide');
     } else {
         appContainer.classList.remove('compact');
+        appContainer.classList.toggle('wide', settings.wideMode);
     }
 
     if (hasTauriApi) {
@@ -1930,16 +1978,22 @@ async function toggleCompactMode(forceCompact = null) {
             const appWindow = getCurrentWindow();
 
             if (settings.compactMode) {
-                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(420, 160));
                 await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(380, 150));
+                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(420, 160));
             } else {
-                await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(420, 520));
-                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(500, 680));
+                const size = getNormalWindowSize();
+                await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(size.minW, size.minH));
+                await appWindow.setSize(new window.__TAURI__.window.LogicalSize(size.w, size.h));
             }
         } catch (e) {
             console.error('Failed to resize window:', e);
         }
     }
+
+    // The player box changed size — refresh the visualizer + name marquee
+    refreshVisualizerSize();
+    applyMarquee(stationName);
+    applyMarquee(nowPlayingTrack);
 }
 
 function enterCompactMode() {
@@ -1984,6 +2038,151 @@ function changeVisualizerColor() {
     saveSetting('visualizerColor', settings.visualizerColor);
 }
 
+// Target window size for the current (non-compact) layout
+function getNormalWindowSize() {
+    return settings.wideMode
+        ? { w: 1180, h: 760, minW: 920, minH: 600 }
+        : { w: 500, h: 760, minW: 420, minH: 560 };
+}
+
+// Apply narrow / wide layout to the UI (and resize the window)
+async function applyViewMode(wide, isInit = false) {
+    settings.wideMode = wide;
+    appContainer.classList.toggle('wide', wide);
+
+    // Sync the header segmented switch and the settings dropdown
+    if (viewSwitch) {
+        viewSwitch.querySelectorAll('.view-opt').forEach(opt => {
+            opt.classList.toggle('active', opt.dataset.view === (wide ? 'wide' : 'narrow'));
+        });
+    }
+    if (viewModeSelect) viewModeSelect.value = wide ? 'wide' : 'narrow';
+
+    if (!isInit) saveSetting('wideMode', wide);
+
+    // Resize the window unless the compact widget is active
+    if (hasTauriApi && !settings.compactMode) {
+        try {
+            const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
+            const appWindow = getCurrentWindow();
+            const size = getNormalWindowSize();
+            await appWindow.setMinSize(new LogicalSize(size.minW, size.minH));
+            await appWindow.setSize(new LogicalSize(size.w, size.h));
+        } catch (e) {
+            console.error('Failed to resize window for view mode:', e);
+        }
+    }
+
+    // The visualizer canvas changed size — refresh it
+    refreshVisualizerSize();
+    applyMarquee(stationName);
+    applyMarquee(nowPlayingTrack);
+}
+
+function toggleViewMode(wide) {
+    if (settings.wideMode === wide) return;
+    applyViewMode(wide);
+}
+
+// Resize the visualizer canvas backing store to match its new CSS box
+function refreshVisualizerSize() {
+    requestAnimationFrame(() => {
+        visualizerCanvas.width = visualizerCanvas.offsetWidth;
+        visualizerCanvas.height = visualizerCanvas.offsetHeight;
+        if (!isPlaying) stopVisualization();
+    });
+}
+
+// LIVE elapsed-time counter shown on the transport bar
+function formatTimer(totalSeconds) {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+function startLiveTimer() {
+    stopLiveTimer();
+    liveTimerSeconds = 0;
+    if (liveTimer) liveTimer.textContent = formatTimer(0);
+    liveTimerInterval = setInterval(() => {
+        liveTimerSeconds++;
+        if (liveTimer) liveTimer.textContent = formatTimer(liveTimerSeconds);
+    }, 1000);
+}
+
+function stopLiveTimer() {
+    if (liveTimerInterval) {
+        clearInterval(liveTimerInterval);
+        liveTimerInterval = null;
+    }
+}
+
+// Reflect playing / stopped state on the brand "ON AIR" badge
+function updateBrandStatus() {
+    if (!brandStatus) return;
+    brandStatus.textContent = isPlaying ? 'v0.7 · ON AIR' : 'v0.7 · OFF AIR';
+}
+
+// Fill the secondary info lines (sub-title + stream quality)
+function updateStationDetails(station) {
+    if (!station) {
+        if (stationSub) stationSub.textContent = '';
+        if (transportQuality) transportQuality.textContent = '—';
+        return;
+    }
+    const genre = station.tags ? station.tags.split(',')[0].trim() : '';
+    const country = station.country || '';
+    if (stationSub) {
+        stationSub.textContent = [country, genre].filter(Boolean).join('  ·  ');
+    }
+    if (transportQuality) {
+        const bitrate = station.bitrate && station.bitrate > 0 ? station.bitrate + ' KBPS' : '';
+        const codec = station.codec || '';
+        transportQuality.textContent = [bitrate, codec].filter(Boolean).join(' · ') || 'LIVE STREAM';
+    }
+}
+
+// Heart icon markup (filled when favorited, outline when not)
+// Copy / confirmation icons for the track-name copy button
+const COPY_ICON_SVG = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" fill="currentColor"/></svg>';
+const CHECK_ICON_SVG = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/></svg>';
+let copyResetTimer = null;
+
+// Copy the current track title (falls back to the station name) to clipboard
+async function copyCurrentTrack() {
+    if (!trackCopyBtn) return;
+    const trackText = (nowPlayingTrack.textContent || '').replace(/^[\s♪•]+/, '').trim();
+    const text = trackText || (currentStation ? currentStation.name : '');
+    if (!text) return;
+
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch (e) {
+        // Fallback for webviews without async clipboard access
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) { console.error('Copy failed:', e); }
+        ta.remove();
+    }
+
+    // Brief "copied" confirmation on the button
+    trackCopyBtn.classList.add('copied');
+    trackCopyBtn.innerHTML = CHECK_ICON_SVG;
+    trackCopyBtn.title = 'Скопійовано';
+    clearTimeout(copyResetTimer);
+    copyResetTimer = setTimeout(() => {
+        trackCopyBtn.classList.remove('copied');
+        trackCopyBtn.innerHTML = COPY_ICON_SVG;
+        trackCopyBtn.title = 'Копіювати назву треку';
+    }, 1400);
+}
+
 // Event listeners
 playBtn.addEventListener('click', togglePlay);
 prevBtn.addEventListener('click', prevStation);
@@ -2022,9 +2221,27 @@ searchInput.addEventListener('input', () => {
     }, 500);
 });
 
+// Toggle the search filters panel
+filtersToggleBtn.addEventListener('click', () => {
+    const willShow = filtersPanel.classList.contains('hidden');
+    filtersPanel.classList.toggle('hidden', !willShow);
+    filtersToggleBtn.classList.toggle('active', willShow);
+});
+
+// Re-run search when a filter changes (keeps results in sync with the panel)
+[filterCountry, filterBitrate, filterCodec].forEach(sel => {
+    sel.addEventListener('change', () => {
+        const activePreset = document.querySelector('.preset-btn.active');
+        const tag = activePreset && !['favorites', 'somafm'].includes(activePreset.dataset.genre)
+            ? activePreset.dataset.genre : '';
+        searchStations(searchInput.value.trim(), tag);
+    });
+});
+
 // Re-evaluate the station name marquee when the window is resized
 window.addEventListener('resize', () => {
     applyMarquee(stationName);
+    applyMarquee(nowPlayingTrack);
 });
 
 // Handle audio stream lifecycle events
@@ -2101,6 +2318,23 @@ enterCompactBtn.addEventListener('click', enterCompactMode);
 exitCompactBtn.addEventListener('click', exitCompactMode);
 alwaysOnTopBtn.addEventListener('click', toggleAlwaysOnTop);
 
+// View switcher (narrow / wide)
+if (viewSwitch) {
+    viewSwitch.querySelectorAll('.view-opt').forEach(opt => {
+        opt.addEventListener('click', () => toggleViewMode(opt.dataset.view === 'wide'));
+    });
+}
+if (viewModeSelect) {
+    viewModeSelect.addEventListener('change', () => {
+        toggleViewMode(viewModeSelect.value === 'wide');
+    });
+}
+
+// Copy the current track title from the track card
+if (trackCopyBtn) {
+    trackCopyBtn.addEventListener('click', copyCurrentTrack);
+}
+
 visualizerStyleSelect.addEventListener('change', () => {
     settings.visualizerStyle = visualizerStyleSelect.value;
     saveSetting('visualizerStyle', settings.visualizerStyle);
@@ -2113,6 +2347,14 @@ visualizerSensitivityInput.addEventListener('input', () => {
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd + K focuses the search field from anywhere
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+        return;
+    }
+
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
     switch(e.key) {

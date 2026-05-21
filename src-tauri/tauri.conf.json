@@ -12,11 +12,11 @@
       {
         "title": "Internet Radio",
         "width": 500,
-        "height": 600,
+        "height": 760,
         "resizable": true,
         "center": true,
-        "minWidth": 400,
-        "minHeight": 500,
+        "minWidth": 420,
+        "minHeight": 560,
         "devtools": true
       }
     ],
