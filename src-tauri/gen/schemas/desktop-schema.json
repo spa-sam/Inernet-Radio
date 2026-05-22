@@ -1989,6 +1989,12 @@
           "markdownDescription": "Enables the get_stream_metadata command without any pre-configured scope."
         },
         {
+          "description": "Enables the open_url command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-url",
+          "markdownDescription": "Enables the open_url command without any pre-configured scope."
+        },
+        {
           "description": "Denies the get_proxy_port command without any pre-configured scope.",
           "type": "string",
           "const": "deny-get-proxy-port",
@@ -1999,6 +2005,12 @@
           "type": "string",
           "const": "deny-get-stream-metadata",
           "markdownDescription": "Denies the get_stream_metadata command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_url command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-url",
+          "markdownDescription": "Denies the open_url command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

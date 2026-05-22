@@ -464,8 +464,9 @@ body {
     50% { opacity: 1; }
 }
 
-/* Copy-track-name button */
-.track-copy-btn {
+/* Track action buttons (copy name / open on YouTube) */
+.track-copy-btn,
+.track-youtube-btn {
     display: none;
     align-items: center;
     justify-content: center;
@@ -479,9 +480,11 @@ body {
     transition: var(--transition);
     flex-shrink: 0;
 }
-.track-copy-btn svg { width: 18px; height: 18px; }
+.track-copy-btn svg,
+.track-youtube-btn svg { width: 18px; height: 18px; }
 .track-copy-btn:hover { background: var(--surface-3); color: var(--text); }
 .track-copy-btn.copied { background: var(--accent-soft); color: var(--accent); }
+.track-youtube-btn:hover { background: var(--surface-3); color: #ff3d3d; }
 
 /* Meta tags ------------------------------------------------------------- */
 .station-meta {
@@ -1373,7 +1376,8 @@ body {
 }
 .container.wide .track-card-thumb { display: block; }
 .container.wide .track-card-label { display: block; }
-.container.wide .track-copy-btn { display: flex; }
+.container.wide .track-copy-btn,
+.container.wide .track-youtube-btn { display: flex; }
 
 /* Meta pills hidden in wide (info shown via sub + quality) */
 .container.wide .station-meta { display: none; }

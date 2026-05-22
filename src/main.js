@@ -120,6 +120,7 @@ const liveTimer = document.getElementById('live-timer');
 const trackCard = document.getElementById('track-card');
 const trackCardThumb = document.getElementById('track-card-thumb');
 const trackCopyBtn = document.getElementById('track-copy-btn');
+const trackYoutubeBtn = document.getElementById('track-youtube-btn');
 
 // State
 let isAlwaysOnTop = false;
@@ -2316,6 +2317,23 @@ async function copyCurrentTrack() {
     }, 1400);
 }
 
+// Open a YouTube search for the current track in the default browser
+async function openTrackOnYouTube() {
+    const trackText = (nowPlayingTrack.textContent || '').replace(/^[\s♪•]+/, '').trim();
+    const query = trackText || (currentStation ? currentStation.name : '');
+    if (!query) return;
+
+    const url = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
+    try {
+        const { invoke } = window.__TAURI__.core;
+        await invoke('open_url', { url });
+    } catch (e) {
+        // Fallback for non-Tauri / restricted contexts
+        console.error('Failed to open YouTube:', e);
+        window.open(url, '_blank');
+    }
+}
+
 // Event listeners
 playBtn.addEventListener('click', togglePlay);
 prevBtn.addEventListener('click', prevStation);
@@ -2466,6 +2484,11 @@ if (viewModeSelect) {
 // Copy the current track title from the track card
 if (trackCopyBtn) {
     trackCopyBtn.addEventListener('click', copyCurrentTrack);
+}
+
+// Open the current track on YouTube
+if (trackYoutubeBtn) {
+    trackYoutubeBtn.addEventListener('click', openTrackOnYouTube);
 }
 
 visualizerStyleSelect.addEventListener('change', () => {

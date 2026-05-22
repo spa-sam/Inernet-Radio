@@ -507,6 +507,23 @@ async fn get_stream_metadata(url: String) -> Option<StreamMetadata> {
     extract_icy_metadata_async(&url).await
 }
 
+// Open a web URL in the user's default browser.
+#[tauri::command]
+fn open_url(url: String) {
+    // Only allow web URLs to avoid launching arbitrary programs.
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return;
+    }
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd")
+        .args(["/C", "start", "", &url])
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(&url).spawn();
+    #[cfg(target_os = "linux")]
+    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -519,7 +536,7 @@ fn main() {
                 .with_state_flags(tauri_plugin_window_state::StateFlags::SIZE)
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![get_stream_metadata, get_proxy_port])
+        .invoke_handler(tauri::generate_handler![get_stream_metadata, get_proxy_port, open_url])
         .setup(|app| {
             let port = tauri::async_runtime::block_on(async {
                 start_proxy_server().await.unwrap_or(0)
