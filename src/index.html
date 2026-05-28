@@ -19,7 +19,7 @@
                 </div>
                 <div class="brand-text">
                     <span class="brand-name">радіо</span>
-                    <span class="brand-status" id="brand-status">v0.7 · OFF AIR</span>
+                    <span class="brand-status" id="brand-status">v1.0.0 · OFF AIR</span>
                 </div>
             </div>
 
@@ -258,6 +258,17 @@
                     <div class="current-station-empty">Немає активної станції</div>
                 </div>
 
+                <div class="track-history-head">
+                    <h3>Історія треків</h3>
+                    <button id="clear-history-btn" class="clear-history-btn" title="Очистити історію треків">
+                        <svg viewBox="0 0 24 24" width="15" height="15"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>
+                        Очистити
+                    </button>
+                </div>
+                <div id="track-history-list" class="track-history-list">
+                    <div class="loading-hint">Історія порожня</div>
+                </div>
+
                 <h3>Додати власну станцію</h3>
                 <div class="custom-form">
                     <input type="text" id="custom-name" placeholder="Назва радіостанції">
@@ -333,9 +344,27 @@
                     <input type="color" id="visualizer-color" value="#ff5a36">
                 </div>
 
+                <h3>Таймер сну</h3>
+                <div class="setting-item flex-between">
+                    <label for="sleep-timer-select">Зупинити відтворення через</label>
+                    <select id="sleep-timer-select" class="custom-select">
+                        <option value="0">Вимкнено</option>
+                        <option value="15">15 хвилин</option>
+                        <option value="30">30 хвилин</option>
+                        <option value="45">45 хвилин</option>
+                        <option value="60">1 годину</option>
+                        <option value="90">1.5 години</option>
+                        <option value="120">2 години</option>
+                    </select>
+                </div>
+                <div class="setting-item flex-between sleep-timer-status hidden" id="sleep-timer-status">
+                    <span>Залишилось</span>
+                    <span id="sleep-timer-remaining">--:--</span>
+                </div>
+
                 <h3>Про програму</h3>
                 <p class="about-text">
-                    <strong>Internet Radio Player v0.7</strong><br>
+                    <strong>Internet Radio Player <span id="about-version">v1.0.0</span></strong><br>
                     Сучасний радіоплеєр з обходом CORS та підтримкою HTTPS метаданих.<br>
                     Побудовано на Tauri v2 + Rust + HTML5 Audio.
                 </p>

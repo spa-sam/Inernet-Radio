@@ -76,6 +76,10 @@ const filterCodec = document.getElementById('filter-codec');
 const recentlyPlayedSection = document.getElementById('recently-played-section');
 const recentlyPlayedList = document.getElementById('recently-played-list');
 
+// Track history elements
+const trackHistoryList = document.getElementById('track-history-list');
+const clearHistoryBtn = document.getElementById('clear-history-btn');
+
 // Custom stations elements
 const customNameInput = document.getElementById('custom-name');
 const customUrlInput = document.getElementById('custom-url');
@@ -109,6 +113,9 @@ const enterCompactBtn = document.getElementById('enter-compact-btn');
 const exitCompactBtn = document.getElementById('exit-compact-btn');
 const alwaysOnTopBtn = document.getElementById('always-on-top-btn');
 const viewModeSelect = document.getElementById('view-mode-select');
+const sleepTimerSelect = document.getElementById('sleep-timer-select');
+const sleepTimerStatus = document.getElementById('sleep-timer-status');
+const sleepTimerRemaining = document.getElementById('sleep-timer-remaining');
 
 // Layout / header elements
 const viewSwitch = document.getElementById('view-switch');
@@ -122,10 +129,19 @@ const trackCardThumb = document.getElementById('track-card-thumb');
 const trackCopyBtn = document.getElementById('track-copy-btn');
 const trackYoutubeBtn = document.getElementById('track-youtube-btn');
 
+// Single source of truth for the displayed version (matches package.json)
+const APP_VERSION = '1.0.0';
+
+// Favorite (heart) icon markup, shared across the station lists
+const HEART_FILLED_SVG = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/></svg>`;
+const HEART_OUTLINE_SVG = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z" fill="currentColor"/></svg>`;
+
 // State
 let isAlwaysOnTop = false;
 let liveTimerInterval = null;
 let liveTimerSeconds = 0;
+let sleepTimerInterval = null;
+let sleepTimerEnd = 0;
 let currentStation = null;
 let isPlaying = false;
 let metadataInterval = null;
@@ -133,6 +149,7 @@ let favorites = [];
 let customStations = [];
 let blacklist = [];
 let recentlyPlayed = [];
+let trackHistory = [];
 let lastStation = null;
 let currentStationsList = [];
 let currentStationIndex = -1;
@@ -250,6 +267,16 @@ async function initDatabase() {
         `);
 
         await db.execute(`
+            CREATE TABLE IF NOT EXISTS track_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                station_name TEXT,
+                favicon TEXT,
+                timestamp INTEGER
+            )
+        `);
+
+        await db.execute(`
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT
@@ -274,6 +301,7 @@ function loadFromLocalStorage() {
         customStations = JSON.parse(localStorage.getItem('customStations') || '[]');
         blacklist = JSON.parse(localStorage.getItem('blacklist') || '[]');
         recentlyPlayed = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
+        trackHistory = JSON.parse(localStorage.getItem('trackHistory') || '[]');
         lastStation = JSON.parse(localStorage.getItem('lastStation') || 'null');
         const savedSettings = JSON.parse(localStorage.getItem('settings') || '{}');
         settings = { ...settings, ...savedSettings };
@@ -313,6 +341,15 @@ async function loadDataFromDb() {
             url: row.url,
             favicon: row.favicon,
             country: 'Нещодавно прослухані'
+        }));
+
+        // Load track history (most recent first)
+        const historyRows = await db.select('SELECT * FROM track_history ORDER BY timestamp DESC LIMIT 50');
+        trackHistory = historyRows.map(row => ({
+            title: row.title,
+            stationName: row.station_name,
+            favicon: row.favicon,
+            timestamp: row.timestamp
         }));
 
         // Load settings
@@ -400,6 +437,9 @@ async function init() {
     // Request notification permission
     requestNotificationPermission();
 
+    // Wire OS-level media controls once
+    setupMediaSession();
+
     // Apply saved settings
     compactModeCheckbox.checked = settings.compactMode;
     visualizerEnabledCheckbox.checked = settings.visualizerEnabled;
@@ -416,8 +456,10 @@ async function init() {
         toggleCompactMode(true);
     }
 
-    // Reflect initial OFF AIR state
+    // Reflect initial OFF AIR state and sync the About version label
     updateBrandStatus();
+    const aboutVersion = document.getElementById('about-version');
+    if (aboutVersion) aboutVersion.textContent = 'v' + APP_VERSION;
 
     if (!settings.visualizerEnabled) {
         visualizerCanvas.classList.add('hidden');
@@ -451,6 +493,9 @@ async function init() {
 
     // Load custom stations
     renderCustomStations();
+
+    // Render track history
+    renderTrackHistory();
 
     // Load the popular stations list
     loadPopularStations();
@@ -538,11 +583,11 @@ async function toggleFavorite(station, btn) {
     if (index === -1) {
         favorites.push(station);
         btn.classList.add('active');
-        btn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/></svg>`;
+        btn.innerHTML = HEART_FILLED_SVG;
     } else {
         favorites.splice(index, 1);
         btn.classList.remove('active');
-        btn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z" fill="currentColor"/></svg>`;
+        btn.innerHTML = HEART_OUTLINE_SVG;
     }
 
     localStorage.setItem('favorites', JSON.stringify(favorites));
@@ -701,9 +746,9 @@ function renderStations(stations, container = stationsList) {
         favBtn.className = 'action-btn favorite-btn';
         if (isFavorite(station.stationuuid)) {
             favBtn.classList.add('active');
-            favBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/></svg>`;
+            favBtn.innerHTML = HEART_FILLED_SVG;
         } else {
-            favBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z" fill="currentColor"/></svg>`;
+            favBtn.innerHTML = HEART_OUTLINE_SVG;
         }
         favBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -890,6 +935,7 @@ async function fetchStreamMetadata(url) {
             nowPlayingTrack.textContent = '♪ ' + cleanTitle;
             applyMarquee(nowPlayingTrack);
             showSongNotification(currentStation.name, cleanTitle);
+            updateMediaSession(cleanTitle);
         }
     } catch (error) {
         console.error('Metadata fetch error:', error);
@@ -920,6 +966,29 @@ function stopMetadataPolling() {
     }
 }
 
+// Wire OS-level media controls (media keys, lock screen, system widget)
+function setupMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    ms.setActionHandler('play', () => { if (currentStation) playStation(); });
+    ms.setActionHandler('pause', stopStation);
+    ms.setActionHandler('stop', stopStation);
+    ms.setActionHandler('previoustrack', prevStation);
+    ms.setActionHandler('nexttrack', nextStation);
+}
+
+// Update the metadata shown by the OS media controls
+function updateMediaSession(trackTitle) {
+    if (!('mediaSession' in navigator) || !currentStation) return;
+    const artwork = currentStation.favicon || generatePlaceholderLogo(currentStation.name);
+    navigator.mediaSession.metadata = new MediaMetadata({
+        title: trackTitle || currentStation.name,
+        artist: trackTitle ? currentStation.name : (currentStation.country || 'Internet Radio'),
+        album: 'Internet Radio',
+        artwork: [{ src: artwork, sizes: '512x512', type: artwork.startsWith('data:') ? 'image/svg+xml' : 'image/png' }]
+    });
+}
+
 // Request Notification Permission
 function requestNotificationPermission() {
     if ('Notification' in window) {
@@ -941,6 +1010,25 @@ function showSongNotification(stationName, trackTitle) {
             });
         }
     }
+}
+
+// Non-blocking toast notification (replaces native alert)
+let toastContainer = null;
+function toast(message, type = 'info', duration = 3200) {
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'toast-container';
+        document.body.appendChild(toastContainer);
+    }
+    const el = document.createElement('div');
+    el.className = 'toast toast-' + type;
+    el.textContent = message;
+    toastContainer.appendChild(el);
+
+    setTimeout(() => {
+        el.classList.add('toast-out');
+        el.addEventListener('animationend', () => el.remove(), { once: true });
+    }, duration);
 }
 
 // Helper function to adjust color brightness
@@ -1284,6 +1372,9 @@ function onPlaySuccess() {
     startVisualization();
     startLiveTimer();
     addToRecentlyPlayed(currentStation);
+    reportStationClick(currentStation);
+    updateMediaSession();
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 }
 
 function onPlayError(error) {
@@ -1403,6 +1494,7 @@ function stopStation() {
     audioPlayer.src = '';
     isPlaying = false;
     updatePlayButton();
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     stopMetadataPolling();
     stopVisualization();
     stopLiveTimer();
@@ -1440,6 +1532,16 @@ function updatePlayButton() {
     // Drive the LIVE badges and the "ON AIR" indicator
     appContainer.classList.toggle('playing', isPlaying);
     updateBrandStatus();
+}
+
+// Report a play to Radio Browser (improves their click/popularity stats).
+// Only catalog stations have a real UUID; skip custom/preview/somafm entries.
+function reportStationClick(station) {
+    if (!station || !station.stationuuid) return;
+    const uuid = station.stationuuid;
+    if (uuid.startsWith('custom_') || uuid.startsWith('preview_') || uuid.startsWith('somafm_')) return;
+
+    apiFetch(`/url/${uuid}`).catch(e => console.warn('Click report failed:', e.message));
 }
 
 // Recently played functions
@@ -1510,6 +1612,94 @@ function renderRecentlyPlayed() {
     });
 }
 
+// Track history: log a heard track title (ICY metadata)
+async function addToTrackHistory(title, station) {
+    if (!title) return;
+    // Skip consecutive duplicates (the same song is polled several times)
+    if (trackHistory.length > 0 && trackHistory[0].title === title) return;
+
+    const entry = {
+        title,
+        stationName: station ? station.name : '',
+        favicon: station ? (station.favicon || '') : '',
+        timestamp: Date.now()
+    };
+    trackHistory.unshift(entry);
+    if (trackHistory.length > 50) trackHistory.pop();
+
+    localStorage.setItem('trackHistory', JSON.stringify(trackHistory));
+
+    if (db) {
+        try {
+            await db.execute(
+                'INSERT INTO track_history (title, station_name, favicon, timestamp) VALUES ($1, $2, $3, $4)',
+                [entry.title, entry.stationName, entry.favicon, entry.timestamp]
+            );
+            // Keep only the newest 50 rows
+            await db.execute(
+                'DELETE FROM track_history WHERE id NOT IN (SELECT id FROM track_history ORDER BY timestamp DESC LIMIT 50)'
+            );
+        } catch (e) {
+            console.error('Save track history error:', e);
+        }
+    }
+
+    renderTrackHistory();
+}
+
+function renderTrackHistory() {
+    if (!trackHistoryList) return;
+
+    if (trackHistory.length === 0) {
+        trackHistoryList.replaceChildren();
+        const hint = document.createElement('div');
+        hint.className = 'loading-hint';
+        hint.textContent = 'Історія порожня';
+        trackHistoryList.appendChild(hint);
+        return;
+    }
+
+    trackHistoryList.replaceChildren();
+    trackHistory.forEach(entry => {
+        const item = document.createElement('div');
+        item.className = 'track-history-item';
+
+        const info = document.createElement('div');
+        info.className = 'track-history-info';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'track-history-title';
+        titleEl.textContent = entry.title;
+
+        const meta = document.createElement('div');
+        meta.className = 'track-history-meta';
+        const time = new Date(entry.timestamp).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+        meta.textContent = [entry.stationName, time].filter(Boolean).join('  ·  ');
+
+        info.append(titleEl, meta);
+
+        const ytBtn = document.createElement('button');
+        ytBtn.className = 'action-btn track-history-yt';
+        ytBtn.title = 'Знайти на YouTube';
+        ytBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31.3 31.3 0 0 0 0 12a31.3 31.3 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31.3 31.3 0 0 0 24 12a31.3 31.3 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6z" fill="currentColor"/></svg>`;
+        ytBtn.addEventListener('click', () => openYouTubeSearch(entry.title));
+
+        item.append(info, ytBtn);
+        trackHistoryList.appendChild(item);
+    });
+}
+
+async function clearTrackHistory() {
+    trackHistory = [];
+    localStorage.setItem('trackHistory', '[]');
+    if (db) {
+        try { await db.execute('DELETE FROM track_history'); }
+        catch (e) { console.error('Clear track history error:', e); }
+    }
+    renderTrackHistory();
+    toast('Історію треків очищено', 'success');
+}
+
 // Try to get favicon from domain
 function getFaviconFromUrl(streamUrl) {
     try {
@@ -1555,7 +1745,7 @@ function previewCustomUrl() {
 
     const url = customUrlInput.value.trim();
     if (!url) {
-        alert('Введіть URL потоку');
+        toast('Введіть URL потоку', 'error');
         return;
     }
 
@@ -1602,7 +1792,7 @@ function previewCustomUrl() {
     };
     const onPreviewError = (error) => {
         console.error('Preview error:', error);
-        alert('Помилка відтворення URL: ' + (error && error.message ? error.message : error));
+        toast('Помилка відтворення URL: ' + (error && error.message ? error.message : error), 'error');
         isPlaying = false;
         updatePlayButton();
         previewBtn.textContent = 'Прослухати';
@@ -1623,7 +1813,7 @@ async function addCustomStation() {
     const genre = customGenreInput.value.trim();
 
     if (!name || !url) {
-        alert('Введіть назву та URL станції');
+        toast('Введіть назву та URL станції', 'error');
         return;
     }
 
@@ -1687,7 +1877,7 @@ async function saveEditedStation() {
     const genre = editStationGenreInput.value.trim();
 
     if (!name || !url) {
-        alert('Введіть назву та URL');
+        toast('Введіть назву та URL', 'error');
         return;
     }
 
@@ -1772,9 +1962,9 @@ function renderCustomStations() {
         const favoriteBtn = document.createElement('button');
         favoriteBtn.className = 'action-btn favorite-btn' + (isFavorite(station.stationuuid) ? ' active' : '');
         if (isFavorite(station.stationuuid)) {
-            favoriteBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor"/></svg>`;
+            favoriteBtn.innerHTML = HEART_FILLED_SVG;
         } else {
-            favoriteBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z" fill="currentColor"/></svg>`;
+            favoriteBtn.innerHTML = HEART_OUTLINE_SVG;
         }
         favoriteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1836,7 +2026,7 @@ async function exportToJson(data, defaultFilename) {
             }
         } catch (error) {
             console.error('Export error:', error);
-            alert('Помилка експорту: ' + error.message);
+            toast('Помилка експорту: ' + error.message, 'error');
         }
     } else {
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1851,7 +2041,7 @@ async function exportToJson(data, defaultFilename) {
 
 async function exportFavorites() {
     if (favorites.length === 0) {
-        alert('Немає обраних станцій для експорту');
+        toast('Немає обраних станцій для експорту', 'error');
         return;
     }
     await exportToJson(favorites, 'radio-favorites.json');
@@ -1860,7 +2050,7 @@ async function exportFavorites() {
 // Export current playing station
 async function exportCurrentStation() {
     if (!currentStation) {
-        alert('Немає активної станції');
+        toast('Немає активної станції', 'error');
         return;
     }
     await exportToJson([currentStation], `${currentStation.name.replace(/[^a-zA-Z0-9]/g, '_')}.json`);
@@ -1877,18 +2067,42 @@ function updateCurrentStationInfo() {
 
     const s = currentStation;
     const genre = s.tags ? s.tags.split(',')[0] : '';
-    const logoSrc = s.favicon || generatePlaceholderLogo(s.name);
     const fallbackLogo = generatePlaceholderLogo(s.name);
+    const logoSrc = s.favicon || fallbackLogo;
 
-    currentStationInfo.innerHTML = `
-        <div class="current-station-form">
-            <img src="${logoSrc}" class="current-station-logo" onerror="this.src='${fallbackLogo}'; this.onerror=null;">
-            <input type="text" value="${s.name}" readonly placeholder="Назва">
-            <input type="text" value="${s.url_resolved || s.url}" readonly placeholder="URL потоку">
-            <input type="text" value="${genre}" readonly placeholder="Жанр">
-            <button class="btn-export" onclick="exportCurrentStation()">Експортувати</button>
-        </div>
-    `;
+    // Build the form with DOM APIs (not innerHTML) so station names/URLs
+    // from the public Radio Browser catalog cannot inject markup (XSS).
+    currentStationInfo.replaceChildren();
+    const form = document.createElement('div');
+    form.className = 'current-station-form';
+
+    const logo = document.createElement('img');
+    logo.className = 'current-station-logo';
+    logo.src = logoSrc;
+    logo.onerror = function () { this.src = fallbackLogo; this.onerror = null; };
+
+    const makeField = (value, placeholder) => {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.readOnly = true;
+        input.placeholder = placeholder;
+        input.value = value || '';
+        return input;
+    };
+
+    const exportButton = document.createElement('button');
+    exportButton.className = 'btn-export';
+    exportButton.textContent = 'Експортувати';
+    exportButton.addEventListener('click', exportCurrentStation);
+
+    form.append(
+        logo,
+        makeField(s.name, 'Назва'),
+        makeField(s.url_resolved || s.url, 'URL потоку'),
+        makeField(genre, 'Жанр'),
+        exportButton
+    );
+    currentStationInfo.appendChild(form);
 }
 
 // Parse an M3U / M3U8 playlist into {name, url} entries
@@ -1969,7 +2183,7 @@ async function importPlaylistStations(entries) {
     }
     localStorage.setItem('customStations', JSON.stringify(customStations));
     renderCustomStations();
-    alert(`Імпортовано станцій: ${added}`);
+    toast(`Імпортовано станцій: ${added}`, 'success');
 }
 
 // Import the app's own JSON export format (favorites or custom stations)
@@ -1977,7 +2191,7 @@ function importStationsJson(text) {
     const data = JSON.parse(text);
 
     if (!Array.isArray(data)) {
-        alert('Неправильний формат файлу');
+        toast('Неправильний формат файлу', 'error');
         return;
     }
 
@@ -1997,7 +2211,7 @@ function importStationsJson(text) {
         }
         localStorage.setItem('customStations', JSON.stringify(customStations));
         renderCustomStations();
-        alert('Власні станції імпортовано');
+        toast('Власні станції імпортовано', 'success');
     } else {
         for (const station of data) {
             if (!favorites.some(f => f.stationuuid === station.stationuuid)) {
@@ -2011,7 +2225,7 @@ function importStationsJson(text) {
             }
         }
         localStorage.setItem('favorites', JSON.stringify(favorites));
-        alert('Обрані станції імпортовано');
+        toast('Обрані станції імпортовано', 'success');
     }
 }
 
@@ -2036,7 +2250,7 @@ function importStations(event) {
                 importStationsJson(text);
             }
         } catch (error) {
-            alert('Помилка читання файлу: ' + error.message);
+            toast('Помилка читання файлу: ' + error.message, 'error');
         }
     };
     reader.readAsText(file);
@@ -2253,10 +2467,50 @@ function stopLiveTimer() {
     }
 }
 
+// Sleep timer: stop playback automatically after the chosen number of minutes
+function startSleepTimer(minutes) {
+    cancelSleepTimer();
+    if (!minutes || minutes <= 0) return;
+
+    sleepTimerEnd = Date.now() + minutes * 60 * 1000;
+    sleepTimerStatus.classList.remove('hidden');
+    updateSleepTimerDisplay();
+
+    sleepTimerInterval = setInterval(() => {
+        if (Date.now() >= sleepTimerEnd) {
+            cancelSleepTimer();
+            if (isPlaying) stopStation();
+            toast('Таймер сну: відтворення зупинено', 'info');
+        } else {
+            updateSleepTimerDisplay();
+        }
+    }, 1000);
+
+    toast(`Таймер сну: ${minutes} хв`, 'success');
+}
+
+function cancelSleepTimer() {
+    if (sleepTimerInterval) {
+        clearInterval(sleepTimerInterval);
+        sleepTimerInterval = null;
+    }
+    sleepTimerEnd = 0;
+    if (sleepTimerStatus) sleepTimerStatus.classList.add('hidden');
+}
+
+function updateSleepTimerDisplay() {
+    if (!sleepTimerRemaining) return;
+    const remainingMs = Math.max(0, sleepTimerEnd - Date.now());
+    const totalSeconds = Math.ceil(remainingMs / 1000);
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    sleepTimerRemaining.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 // Reflect playing / stopped state on the brand "ON AIR" badge
 function updateBrandStatus() {
     if (!brandStatus) return;
-    brandStatus.textContent = isPlaying ? 'v0.7 · ON AIR' : 'v0.7 · OFF AIR';
+    brandStatus.textContent = `v${APP_VERSION} · ${isPlaying ? 'ON AIR' : 'OFF AIR'}`;
 }
 
 // Fill the secondary info lines (sub-title + stream quality)
@@ -2305,6 +2559,9 @@ async function copyCurrentTrack() {
         ta.remove();
     }
 
+    // Save the track to history only on an explicit copy action
+    if (trackText) addToTrackHistory(trackText, currentStation);
+
     // Brief "copied" confirmation on the button
     trackCopyBtn.classList.add('copied');
     trackCopyBtn.innerHTML = CHECK_ICON_SVG;
@@ -2317,12 +2574,9 @@ async function copyCurrentTrack() {
     }, 1400);
 }
 
-// Open a YouTube search for the current track in the default browser
-async function openTrackOnYouTube() {
-    const trackText = (nowPlayingTrack.textContent || '').replace(/^[\s♪•]+/, '').trim();
-    const query = trackText || (currentStation ? currentStation.name : '');
+// Open a YouTube search for an arbitrary query in the default browser
+async function openYouTubeSearch(query) {
     if (!query) return;
-
     const url = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
     try {
         const { invoke } = window.__TAURI__.core;
@@ -2332,6 +2586,13 @@ async function openTrackOnYouTube() {
         console.error('Failed to open YouTube:', e);
         window.open(url, '_blank');
     }
+}
+
+// Open a YouTube search for the current track in the default browser
+function openTrackOnYouTube() {
+    const trackText = (nowPlayingTrack.textContent || '').replace(/^[\s♪•]+/, '').trim();
+    const query = trackText || (currentStation ? currentStation.name : '');
+    openYouTubeSearch(query);
 }
 
 // Event listeners
@@ -2450,6 +2711,16 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
 // Custom stations
 addCustomBtn.addEventListener('click', addCustomStation);
 previewBtn.addEventListener('click', previewCustomUrl);
+
+// Track history
+if (clearHistoryBtn) clearHistoryBtn.addEventListener('click', clearTrackHistory);
+
+// Sleep timer
+if (sleepTimerSelect) {
+    sleepTimerSelect.addEventListener('change', () => {
+        startSleepTimer(parseInt(sleepTimerSelect.value, 10));
+    });
+}
 
 // Modal Save & Close
 closeModalBtn.addEventListener('click', () => editModal.classList.add('hidden'));

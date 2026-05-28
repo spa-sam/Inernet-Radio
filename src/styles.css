@@ -1443,3 +1443,120 @@ body {
     padding: 0;
 }
 .container.compact #exit-compact-btn { display: flex; }
+
+/* ==========================================================================
+   TOAST NOTIFICATIONS (non-blocking, replace native alert)
+   ========================================================================== */
+.toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 9999;
+    pointer-events: none;
+    align-items: center;
+    width: max-content;
+    max-width: 90vw;
+}
+.toast {
+    pointer-events: auto;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--line-strong);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-md);
+    padding: 12px 18px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    max-width: 420px;
+    line-height: 1.35;
+    animation: toast-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.toast.toast-out { animation: toast-out 0.25s ease forwards; }
+.toast-success { border-left-color: var(--live); }
+.toast-error { border-left-color: var(--accent-deep); }
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes toast-out {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(14px); }
+}
+
+/* ==========================================================================
+   TRACK HISTORY (heard songs log)
+   ========================================================================== */
+.track-history-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.clear-history-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--surface-2);
+    color: var(--text-muted);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.clear-history-btn svg { flex-shrink: 0; }
+.clear-history-btn:hover {
+    background: rgba(255, 90, 54, 0.12);
+    border-color: rgba(255, 90, 54, 0.4);
+    color: var(--accent);
+}
+.track-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+.track-history-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+}
+.track-history-info { flex: 1; min-width: 0; }
+.track-history-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.track-history-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.track-history-yt { flex-shrink: 0; color: var(--text-muted); }
+.track-history-yt:hover { color: var(--accent); }
+
+/* Sleep timer countdown row */
+.sleep-timer-status #sleep-timer-remaining {
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+}
