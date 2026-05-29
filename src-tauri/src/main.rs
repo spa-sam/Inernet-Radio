@@ -2,6 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -21,6 +23,88 @@ struct StreamMetadata {
 }
 
 struct ProxyPort(u16);
+
+// Tracks the currently active recording. The stop flag is shared with the
+// recording task: setting it to true (via stop_recording or natural stream
+// end) terminates the write loop. `is_recording` treats a set flag as "done".
+#[derive(Default)]
+struct RecordingState {
+    stop: Mutex<Option<Arc<AtomicBool>>>,
+}
+
+// Connect to a stream and write its raw audio bytes to `path` until the stop
+// flag is set or the stream ends. Reuses the proxy's stream resolver so
+// redirects and playlists are followed and no ICY metadata is interleaved.
+async fn record_stream(url: String, path: String, stop: Arc<AtomicBool>) {
+    match open_audio_stream(&url, 0, false).await {
+        Ok((mut reader, _content_type)) => {
+            let mut file = match tokio::fs::File::create(&path).await {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("[rec] cannot create file {}: {:?}", path, e);
+                    stop.store(true, Ordering::Relaxed);
+                    return;
+                }
+            };
+            let mut buf = vec![0u8; 16384];
+            loop {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                match timeout(Duration::from_secs(15), reader.read(&mut buf)).await {
+                    Ok(Ok(0)) => break,                      // stream ended
+                    Ok(Ok(n)) => {
+                        if file.write_all(&buf[..n]).await.is_err() {
+                            break;
+                        }
+                    }
+                    Ok(Err(_)) => break,                     // read error
+                    Err(_) => break,                         // stalled stream
+                }
+            }
+            let _ = file.flush().await;
+        }
+        Err(e) => eprintln!("[rec] open error for {}: {:?}", url, e),
+    }
+    // Mark the recording as finished so is_recording() reports false.
+    stop.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn start_recording(
+    state: tauri::State<'_, RecordingState>,
+    url: String,
+    path: String,
+) -> Result<(), String> {
+    let mut guard = state.stop.lock().map_err(|_| "lock poisoned")?;
+    if let Some(flag) = guard.as_ref() {
+        if !flag.load(Ordering::Relaxed) {
+            return Err("already recording".into());
+        }
+    }
+    let flag = Arc::new(AtomicBool::new(false));
+    *guard = Some(flag.clone());
+    tauri::async_runtime::spawn(record_stream(url, path, flag));
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_recording(state: tauri::State<'_, RecordingState>) {
+    if let Ok(mut guard) = state.stop.lock() {
+        if let Some(flag) = guard.take() {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
+#[tauri::command]
+fn is_recording(state: tauri::State<'_, RecordingState>) -> bool {
+    state
+        .stop
+        .lock()
+        .map(|g| g.as_ref().map(|f| !f.load(Ordering::Relaxed)).unwrap_or(false))
+        .unwrap_or(false)
+}
 
 // Parse URL into host, port, path, and is_ssl
 fn parse_url(url: &str) -> Option<(String, u16, String, bool)> {
@@ -326,6 +410,10 @@ async fn open_audio_stream(
     let mut stream: Box<dyn AsyncStream> = if is_ssl {
         // Radio servers often have expired/mismatched certificates; accept
         // them so streams are not blocked by TLS validation failures.
+        eprintln!(
+            "[tls] accepting unverified certificate for {} (validation disabled for stream proxy)",
+            host
+        );
         let connector = native_tls::TlsConnector::builder()
             .danger_accept_invalid_certs(true)
             .danger_accept_invalid_hostnames(true)
@@ -509,19 +597,16 @@ async fn get_stream_metadata(url: String) -> Option<StreamMetadata> {
 
 // Open a web URL in the user's default browser.
 #[tauri::command]
-fn open_url(url: String) {
+fn open_url(app: tauri::AppHandle, url: String) {
+    use tauri_plugin_opener::OpenerExt;
     // Only allow web URLs to avoid launching arbitrary programs.
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return;
     }
-    #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("cmd")
-        .args(["/C", "start", "", &url])
-        .spawn();
-    #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg(&url).spawn();
-    #[cfg(target_os = "linux")]
-    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+    // The opener plugin passes the URL straight to the OS handler
+    // (ShellExecute / open / xdg-open) without going through a shell,
+    // so URL contents cannot be interpreted as shell commands.
+    let _ = app.opener().open_url(url, None::<&str>);
 }
 
 fn main() {
@@ -529,6 +614,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
+        .plugin(tauri_plugin_opener::init())
         // Persist the window size between sessions (size only — position
         // stays centered, visibility is left to the tray logic).
         .plugin(
@@ -536,7 +622,15 @@ fn main() {
                 .with_state_flags(tauri_plugin_window_state::StateFlags::SIZE)
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![get_stream_metadata, get_proxy_port, open_url])
+        .manage(RecordingState::default())
+        .invoke_handler(tauri::generate_handler![
+            get_stream_metadata,
+            get_proxy_port,
+            open_url,
+            start_recording,
+            stop_recording,
+            is_recording
+        ])
         .setup(|app| {
             let port = tauri::async_runtime::block_on(async {
                 start_proxy_server().await.unwrap_or(0)

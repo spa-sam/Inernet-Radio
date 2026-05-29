@@ -1,45 +1,13 @@
-// Radio Browser API - mirror servers with automatic failover.
-// Defaults are used until the live server list is fetched.
-let apiServers = [
-    'de1.api.radio-browser.info',
-    'de2.api.radio-browser.info',
-    'nl1.api.radio-browser.info',
-    'at1.api.radio-browser.info'
-];
-let currentApiServer = 0;
-
-// Fetch the live list of Radio Browser mirror servers
-async function loadApiServers() {
-    try {
-        const res = await fetch('https://all.api.radio-browser.info/json/servers');
-        const servers = await res.json();
-        const names = [...new Set(servers.map(s => s.name).filter(Boolean))];
-        if (names.length > 0) {
-            apiServers = names;
-            currentApiServer = Math.floor(Math.random() * names.length);
-        }
-    } catch (e) {
-        console.warn('Could not load API server list, using defaults:', e);
-    }
-}
-
-// Fetch a Radio Browser endpoint, failing over between mirrors on error
-async function apiFetch(path) {
-    let lastError;
-    for (let i = 0; i < apiServers.length; i++) {
-        const index = (currentApiServer + i) % apiServers.length;
-        try {
-            const res = await fetch(`https://${apiServers[index]}/json${path}`);
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            currentApiServer = index;
-            return await res.json();
-        } catch (e) {
-            lastError = e;
-            console.warn(`API server ${apiServers[index]} failed:`, e.message);
-        }
-    }
-    throw lastError || new Error('All API servers failed');
-}
+// ES-module imports — API layer and persistence layer
+import { loadApiServers, apiFetch, loadFilterOptions } from './api.js';
+import {
+    db,
+    openDatabase,
+    loadAllDataFromDb,
+    loadAllDataFromStorage,
+    saveSetting,
+    applySavedOrder
+} from './db.js';
 
 // DOM elements
 const audioPlayer = document.getElementById('audio-player');
@@ -69,6 +37,7 @@ const playerSection = document.querySelector('.player-section');
 const filtersToggleBtn = document.getElementById('filters-toggle-btn');
 const filtersPanel = document.getElementById('filters-panel');
 const filterCountry = document.getElementById('filter-country');
+const filterTag = document.getElementById('filter-tag');
 const filterBitrate = document.getElementById('filter-bitrate');
 const filterCodec = document.getElementById('filter-codec');
 
@@ -109,6 +78,11 @@ const visualizerEnabledCheckbox = document.getElementById('visualizer-enabled');
 const visualizerStyleSelect = document.getElementById('visualizer-style');
 const visualizerSensitivityInput = document.getElementById('visualizer-sensitivity');
 const visualizerColorPicker = document.getElementById('visualizer-color');
+const eqEnabledCheckbox = document.getElementById('eq-enabled');
+const eqPresetSelect = document.getElementById('eq-preset');
+const eqBandsContainer = document.getElementById('eq-bands');
+const normalizeCheckbox = document.getElementById('normalize-enabled');
+const recordBtn = document.getElementById('record-btn');
 const enterCompactBtn = document.getElementById('enter-compact-btn');
 const exitCompactBtn = document.getElementById('exit-compact-btn');
 const alwaysOnTopBtn = document.getElementById('always-on-top-btn');
@@ -154,6 +128,12 @@ let lastStation = null;
 let currentStationsList = [];
 let currentStationIndex = -1;
 
+// Infinite-scroll pagination state for the searchable station list. Only
+// active for searchStations() results; finite lists (favorites, popular,
+// SomaFM) set active=false so the scroll handler ignores them.
+const STATIONS_PAGE_SIZE = 30;
+let searchPage = { active: false, query: '', tag: '', offset: 0, loading: false, exhausted: false };
+
 // HLS playback (hls.js)
 let hls = null;
 let proxyHlsLoader = null;
@@ -174,14 +154,29 @@ let settings = {
     visualizerEnabled: true,
     visualizerColor: '#ff5a36',
     visualizerStyle: 'bars',
-    visualizerSensitivity: 1.0
+    visualizerSensitivity: 1.0,
+    eqEnabled: false,
+    eqGains: [0, 0, 0, 0, 0],
+    normalizeEnabled: false,
+    favoritesOrder: [],
+    customOrder: []
 };
+
+// Equalizer bands (gain in dB, range -12..+12). Shelf filters at the
+// extremes and peaking filters in between, wired into the visualizer graph.
+const EQ_BANDS = [
+    { freq: 60, type: 'lowshelf', label: '60' },
+    { freq: 250, type: 'peaking', label: '250' },
+    { freq: 1000, type: 'peaking', label: '1K' },
+    { freq: 4000, type: 'peaking', label: '4K' },
+    { freq: 12000, type: 'highshelf', label: '12K' }
+];
 
 // Proxy Port (loaded from backend)
 let proxyPort = 0;
 
-// Database
-let db = null;
+// `db` is a live binding imported from db.js; direct uses below always see
+// the current connection value set by openDatabase().
 
 // Audio visualization
 let audioContext = null;
@@ -189,209 +184,41 @@ let analyser = null;
 let dataArray = null;
 let animationId = null;
 let sourceNode = null;
+let eqFilters = [];
+let compressorNode = null;
 let smoothedData = null;
-let barPeaks = null; // Для зберігання позицій пікових смуг
-let peakHold = null; // Для затримки піків перед падінням
+let barPeaks = null; // Stores peak bar positions
+let peakHold = null; // Hold time before peaks fall
 let lastTrackTitle = '';
 
 // Check if Tauri is available
 const hasTauriApi = typeof window.__TAURI__ !== 'undefined';
 
-// Initialize database
+// Initialize database and load persisted app data.
+// Delegates to db.js (openDatabase / loadAllDataFromDb / loadAllDataFromStorage),
+// then assigns the returned data to module-level state.
 async function initDatabase() {
-    if (!hasTauriApi) return;
-
-    try {
-        let Database;
-        if (window.__TAURI_PLUGIN_SQL__) {
-            Database = window.__TAURI_PLUGIN_SQL__.default || window.__TAURI_PLUGIN_SQL__;
-        } else if (window.__TAURI__?.sql) {
-            Database = window.__TAURI__.sql.default || window.__TAURI__.sql.Database || window.__TAURI__.sql;
-        }
-
-        if (!Database) {
-            console.warn('SQL plugin not available, using localStorage fallback');
-            loadFromLocalStorage();
-            return;
-        }
-
-        console.log('Loading database...');
-        db = await Database.load('sqlite:radio.db');
-        console.log('Database loaded successfully');
-
-        // Create tables
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS favorites (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                stationuuid TEXT UNIQUE NOT NULL,
-                name TEXT,
-                url TEXT,
-                url_resolved TEXT,
-                favicon TEXT,
-                country TEXT,
-                codec TEXT,
-                bitrate INTEGER,
-                tags TEXT,
-                data TEXT
-            )
-        `);
-
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS custom_stations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                stationuuid TEXT UNIQUE NOT NULL,
-                name TEXT,
-                url TEXT,
-                genre TEXT,
-                data TEXT
-            )
-        `);
-
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS blacklist (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                stationuuid TEXT UNIQUE NOT NULL,
-                name TEXT
-            )
-        `);
-
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS recently_played (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                stationuuid TEXT UNIQUE NOT NULL,
-                name TEXT,
-                url TEXT,
-                favicon TEXT,
-                timestamp INTEGER
-            )
-        `);
-
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS track_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT,
-                station_name TEXT,
-                favicon TEXT,
-                timestamp INTEGER
-            )
-        `);
-
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            )
-        `);
-
-        // Load data from database
-        await loadDataFromDb();
+    const ok = await openDatabase(hasTauriApi);
+    let data;
+    if (ok) {
+        data = await loadAllDataFromDb();
         console.log('Data loaded from database');
-
-    } catch (e) {
-        console.error('Database init error:', e);
-        console.log('Falling back to localStorage');
-        loadFromLocalStorage();
-    }
-}
-
-// Fallback to localStorage if SQL is not available
-function loadFromLocalStorage() {
-    try {
-        favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
-        customStations = JSON.parse(localStorage.getItem('customStations') || '[]');
-        blacklist = JSON.parse(localStorage.getItem('blacklist') || '[]');
-        recentlyPlayed = JSON.parse(localStorage.getItem('recentlyPlayed') || '[]');
-        trackHistory = JSON.parse(localStorage.getItem('trackHistory') || '[]');
-        lastStation = JSON.parse(localStorage.getItem('lastStation') || 'null');
-        const savedSettings = JSON.parse(localStorage.getItem('settings') || '{}');
-        settings = { ...settings, ...savedSettings };
-    } catch (e) {
-        console.error('localStorage load error:', e);
-    }
-}
-
-// Load all data from database
-async function loadDataFromDb() {
-    if (!db) return;
-
-    try {
-        // Load favorites
-        const favRows = await db.select('SELECT * FROM favorites');
-        favorites = favRows.map(row => {
-            const station = row.data ? JSON.parse(row.data) : {};
-            return { ...station, stationuuid: row.stationuuid, name: row.name, url: row.url, favicon: row.favicon };
-        });
-
-        // Load custom stations
-        const customRows = await db.select('SELECT * FROM custom_stations');
-        customStations = customRows.map(row => {
-            const station = row.data ? JSON.parse(row.data) : {};
-            return { ...station, stationuuid: row.stationuuid, name: row.name, url: row.url, genre: row.genre };
-        });
-
-        // Load blacklist
-        const blackRows = await db.select('SELECT * FROM blacklist');
-        blacklist = blackRows.map(row => ({ stationuuid: row.stationuuid, name: row.name }));
-
-        // Load recently played
-        const recentRows = await db.select('SELECT * FROM recently_played ORDER BY timestamp DESC LIMIT 10');
-        recentlyPlayed = recentRows.map(row => ({
-            stationuuid: row.stationuuid,
-            name: row.name,
-            url: row.url,
-            favicon: row.favicon,
-            country: 'Нещодавно прослухані'
-        }));
-
-        // Load track history (most recent first)
-        const historyRows = await db.select('SELECT * FROM track_history ORDER BY timestamp DESC LIMIT 50');
-        trackHistory = historyRows.map(row => ({
-            title: row.title,
-            stationName: row.station_name,
-            favicon: row.favicon,
-            timestamp: row.timestamp
-        }));
-
-        // Load settings
-        const settingsRows = await db.select('SELECT * FROM settings');
-        settingsRows.forEach(row => {
-            if (row.key === 'compactMode') settings.compactMode = row.value === 'true';
-            if (row.key === 'wideMode') settings.wideMode = row.value === 'true';
-            if (row.key === 'visualizerEnabled') settings.visualizerEnabled = row.value === 'true';
-            if (row.key === 'visualizerColor') settings.visualizerColor = row.value;
-            if (row.key === 'visualizerStyle') settings.visualizerStyle = row.value;
-            if (row.key === 'visualizerSensitivity') settings.visualizerSensitivity = parseFloat(row.value);
-            if (row.key === 'lastStation') lastStation = row.value ? JSON.parse(row.value) : null;
-        });
-
-    } catch (e) {
-        console.error('Load data error:', e);
-    }
-}
-
-// Save setting to database and localStorage
-async function saveSetting(key, value) {
-    try {
-        if (key === 'lastStation') {
-            localStorage.setItem('lastStation', JSON.stringify(value));
-        } else {
-            const savedSettings = JSON.parse(localStorage.getItem('settings') || '{}');
-            savedSettings[key] = value;
-            localStorage.setItem('settings', JSON.stringify(savedSettings));
-        }
-    } catch (e) {
-        console.error('localStorage save error:', e);
+    } else {
+        data = loadAllDataFromStorage();
+        console.log('Using localStorage fallback');
     }
 
-    if (!db) return;
-    try {
-        await db.execute(
-            'INSERT OR REPLACE INTO settings (key, value) VALUES ($1, $2)',
-            [key, typeof value === 'object' ? JSON.stringify(value) : String(value)]
-        );
-    } catch (e) {
-        console.error('Save setting error:', e);
-    }
+    favorites = data.favorites;
+    customStations = data.customStations;
+    blacklist = data.blacklist;
+    recentlyPlayed = data.recentlyPlayed;
+    trackHistory = data.trackHistory;
+    settings = { ...settings, ...data.settings };
+    if (data.lastStation !== null) lastStation = data.lastStation;
+
+    // Apply any previously saved drag-and-drop ordering
+    favorites = applySavedOrder(favorites, settings.favoritesOrder);
+    customStations = applySavedOrder(customStations, settings.customOrder);
 }
 
 // Fetch proxy port from Rust backend
@@ -428,8 +255,8 @@ async function init() {
     // Load proxy port first
     await initProxy();
 
-    // Refresh the Radio Browser mirror list in the background
-    loadApiServers();
+    // Refresh the Radio Browser mirror list, then populate filter suggestions
+    loadApiServers().then(() => loadFilterOptions());
 
     // Initialize database
     await initDatabase();
@@ -447,6 +274,8 @@ async function init() {
     visualizerSensitivityInput.value = settings.visualizerSensitivity || 1.0;
     visualizerColorPicker.value = settings.visualizerColor || '#ff5a36';
     viewModeSelect.value = settings.wideMode ? 'wide' : 'narrow';
+    buildEqUi();
+    if (normalizeCheckbox) normalizeCheckbox.checked = settings.normalizeEnabled;
 
     // Apply narrow / wide layout
     applyViewMode(settings.wideMode, true);
@@ -505,6 +334,8 @@ async function init() {
 let lastVolumeBeforeMute = 70;
 
 function setVolume(volume) {
+    // An explicit volume change overrides any running fade animation
+    cancelFade();
     volume = Math.max(0, Math.min(100, parseInt(volume) || 0));
     volumeSlider.value = volume;
     audioPlayer.volume = volume / 100;
@@ -512,6 +343,50 @@ function setVolume(volume) {
     volumeSlider.style.setProperty('--vol', volume + '%');
     volumeValueLabel.textContent = volume + '%';
     volumeBar.classList.toggle('muted', volume === 0);
+}
+
+// Volume fade (smooth play / stop / sleep-timer transitions)
+let fadeRAF = null;
+const FADE_DURATION = 600; // ms
+
+// The user's chosen volume as a 0..1 gain (independent of any active fade)
+function targetVolume() {
+    return Math.max(0, Math.min(100, parseInt(volumeSlider.value) || 0)) / 100;
+}
+
+function cancelFade() {
+    if (fadeRAF) {
+        cancelAnimationFrame(fadeRAF);
+        fadeRAF = null;
+    }
+}
+
+// Ramp audioPlayer.volume to `target` (0..1) over FADE_DURATION, then run onDone.
+// onDone only fires on natural completion — a superseding fade cancels it.
+function fadeTo(target, onDone) {
+    cancelFade();
+    target = Math.max(0, Math.min(1, target));
+    const start = audioPlayer.volume;
+    const delta = target - start;
+    if (Math.abs(delta) < 0.005) {
+        audioPlayer.volume = target;
+        if (onDone) onDone();
+        return;
+    }
+    const startTime = performance.now();
+    const step = (now) => {
+        const t = Math.min(1, (now - startTime) / FADE_DURATION);
+        const eased = 1 - Math.pow(1 - t, 2); // ease-out
+        audioPlayer.volume = Math.max(0, Math.min(1, start + delta * eased));
+        if (t < 1) {
+            fadeRAF = requestAnimationFrame(step);
+        } else {
+            fadeRAF = null;
+            audioPlayer.volume = target;
+            if (onDone) onDone();
+        }
+    };
+    fadeRAF = requestAnimationFrame(step);
 }
 
 function toggleMute() {
@@ -524,26 +399,26 @@ function toggleMute() {
     }
 }
 
-function volumeUp() {
-    setVolume(parseInt(volumeSlider.value) + 5);
-}
-
-function volumeDown() {
-    setVolume(parseInt(volumeSlider.value) - 5);
-}
-
 // Search stations by name and filters
-async function searchStations(query, tag = '') {
-    stationsList.innerHTML = '<div class="loading">Пошук...</div>';
-    clearActivePreset();
+async function searchStations(query, tag = '', append = false) {
+    const tagVal = tag || (filterTag ? filterTag.value.trim() : '');
+
+    if (!append) {
+        stationsList.innerHTML = '<div class="loading">Searching...</div>';
+        clearActivePreset();
+        searchPage = { active: true, query, tag: tagVal, offset: 0, loading: true, exhausted: false };
+    } else {
+        if (!searchPage.active || searchPage.loading || searchPage.exhausted) return;
+        searchPage.loading = true;
+    }
 
     const countryVal = filterCountry.value;
     const bitrateVal = filterBitrate.value;
     const codecVal = filterCodec.value;
 
-    let path = `/stations/search?limit=30&order=clickcount&reverse=true`;
+    let path = `/stations/search?limit=${STATIONS_PAGE_SIZE}&offset=${searchPage.offset}&order=clickcount&reverse=true`;
     if (query) path += `&name=${encodeURIComponent(query)}`;
-    if (tag) path += `&tag=${encodeURIComponent(tag)}`;
+    if (tagVal) path += `&tag=${encodeURIComponent(tagVal)}`;
     if (countryVal) path += `&country=${encodeURIComponent(countryVal)}`;
     if (bitrateVal && parseInt(bitrateVal) > 0) path += `&bitrateMin=${bitrateVal}`;
     if (codecVal) path += `&codec=${codecVal}`;
@@ -551,19 +426,35 @@ async function searchStations(query, tag = '') {
     try {
         const stations = await apiFetch(path);
 
-        const filtered = filterBlacklisted(stations);
-        if (filtered.length === 0) {
-            stationsList.innerHTML = '<div class="loading-hint">Станцій не знайдено</div>';
-            currentStationsList = [];
-            return;
-        }
+        searchPage.loading = false;
+        searchPage.offset += stations.length;
+        if (stations.length < STATIONS_PAGE_SIZE) searchPage.exhausted = true;
 
-        currentStationsList = filtered;
-        renderStations(filtered);
+        const filtered = filterBlacklisted(stations);
+
+        if (!append) {
+            if (filtered.length === 0) {
+                stationsList.innerHTML = '<div class="loading-hint">No stations found</div>';
+                currentStationsList = [];
+                return;
+            }
+            currentStationsList = filtered;
+            renderStations(filtered);
+        } else if (filtered.length) {
+            currentStationsList = currentStationsList.concat(filtered);
+            renderStations(filtered, stationsList, true);
+        }
     } catch (error) {
+        searchPage.loading = false;
         console.error('Search error:', error);
-        stationsList.innerHTML = '<div class="loading-hint">Помилка завантаження станцій</div>';
+        if (!append) stationsList.innerHTML = '<div class="loading-hint">Failed to load stations</div>';
     }
+}
+
+// Fetch the next page when the user scrolls near the bottom of the list.
+function loadMoreStations() {
+    if (!searchPage.active || searchPage.loading || searchPage.exhausted) return;
+    searchStations(searchPage.query, searchPage.tag, true);
 }
 
 // Clear active preset
@@ -610,13 +501,15 @@ async function toggleFavorite(station, btn) {
 
 // Show favorites
 function showFavorites() {
+    searchPage.active = false;
     if (favorites.length === 0) {
-        stationsList.innerHTML = '<div class="loading-hint">Немає збережених станцій</div>';
+        stationsList.innerHTML = '<div class="loading-hint">No saved stations</div>';
         currentStationsList = [];
         return;
     }
     currentStationsList = favorites;
     renderStations(favorites);
+    setupDragReorder(stationsList, favorites, saveFavoritesOrder);
 }
 
 // Check if station is blacklisted
@@ -647,7 +540,8 @@ function filterBlacklisted(stations) {
 
 // Load popular stations on start
 async function loadPopularStations() {
-    stationsList.innerHTML = '<div class="loading">Завантаження популярних станцій...</div>';
+    searchPage.active = false;
+    stationsList.innerHTML = '<div class="loading">Loading popular stations...</div>';
 
     try {
         const stations = await apiFetch('/stations/topclick/20');
@@ -655,13 +549,14 @@ async function loadPopularStations() {
         renderStations(stations);
     } catch (error) {
         console.error('Load error:', error);
-        stationsList.innerHTML = '<div class="loading-hint">Знайдіть радіостанції через пошук вище</div>';
+        stationsList.innerHTML = '<div class="loading-hint">Find radio stations using the search above</div>';
     }
 }
 
 // Load SomaFM curated channels as stations
 async function loadSomaFM() {
-    stationsList.innerHTML = '<div class="loading">Завантаження SomaFM...</div>';
+    searchPage.active = false;
+    stationsList.innerHTML = '<div class="loading">Loading SomaFM...</div>';
 
     try {
         const res = await fetch('https://somafm.com/channels.json');
@@ -685,7 +580,7 @@ async function loadSomaFM() {
         }).filter(s => s.url);
 
         if (stations.length === 0) {
-            stationsList.innerHTML = '<div class="loading-hint">SomaFM не повернув станцій</div>';
+            stationsList.innerHTML = '<div class="loading-hint">SomaFM returned no stations</div>';
             currentStationsList = [];
             return;
         }
@@ -694,22 +589,27 @@ async function loadSomaFM() {
         renderStations(stations);
     } catch (error) {
         console.error('SomaFM load error:', error);
-        stationsList.innerHTML = '<div class="loading-hint">Не вдалося завантажити SomaFM</div>';
+        stationsList.innerHTML = '<div class="loading-hint">Failed to load SomaFM</div>';
     }
 }
 
 // Render stations list
-function renderStations(stations, container = stationsList) {
-    container.innerHTML = '';
+function renderStations(stations, container = stationsList, append = false) {
+    if (!append) container.innerHTML = '';
+
+    const startIndex = append ? container.querySelectorAll('.station-item').length : 0;
 
     // Update the station count badge (only for the main list)
     if (container === stationsList && stationsCount) {
-        stationsCount.textContent = stations.length ? `${stations.length} stations` : '';
+        const total = startIndex + stations.length;
+        stationsCount.textContent = total ? `${total} stations` : '';
     }
 
-    stations.forEach((station, index) => {
+    stations.forEach((station, i) => {
+        const index = startIndex + i;
         const item = document.createElement('div');
         item.className = 'station-item';
+        item.dataset.stationuuid = station.stationuuid;
         if (currentStation && currentStation.stationuuid === station.stationuuid) {
             item.classList.add('active');
             currentStationIndex = index;
@@ -736,7 +636,7 @@ function renderStations(stations, container = stationsList) {
 
         const country = document.createElement('div');
         country.className = 'station-item-country';
-        country.textContent = station.country || 'Невідомо';
+        country.textContent = station.country || 'Unknown';
 
         const actions = document.createElement('div');
         actions.className = 'list-actions';
@@ -759,7 +659,7 @@ function renderStations(stations, container = stationsList) {
         const blacklistBtn = document.createElement('button');
         blacklistBtn.className = 'action-btn blacklist-btn';
         blacklistBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>`;
-        blacklistBtn.title = 'Приховати станцію';
+        blacklistBtn.title = 'Hide station';
         blacklistBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             addToBlacklist(station);
@@ -780,6 +680,66 @@ function renderStations(stations, container = stationsList) {
         });
         container.appendChild(item);
     });
+}
+
+// Enable drag-and-drop reordering for a list of .station-item elements inside
+// `container`. On drop, `list` is reordered to match the DOM and `persist` is
+// called to save the new ordering. Container-level listeners are bound once.
+function setupDragReorder(container, list, persist) {
+    container.querySelectorAll('.station-item').forEach((item) => {
+        item.draggable = true;
+        item.addEventListener('dragstart', (e) => {
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', item.dataset.stationuuid || '');
+        });
+        item.addEventListener('dragend', () => item.classList.remove('dragging'));
+    });
+
+    if (container.dataset.dragBound === '1') return;
+    container.dataset.dragBound = '1';
+
+    container.addEventListener('dragover', (e) => {
+        const dragging = container.querySelector('.dragging');
+        if (!dragging) return; // ignore drags that did not originate here
+        e.preventDefault();
+        const after = getDragAfterElement(container, e.clientY);
+        if (after == null) container.appendChild(dragging);
+        else container.insertBefore(dragging, after);
+    });
+
+    container.addEventListener('drop', (e) => {
+        if (!container.querySelector('.station-item')) return;
+        e.preventDefault();
+        const order = [...container.querySelectorAll('.station-item')]
+            .map((el) => el.dataset.stationuuid);
+        const pos = new Map(order.map((id, i) => [id, i]));
+        list.sort((a, b) => (pos.get(a.stationuuid) ?? 0) - (pos.get(b.stationuuid) ?? 0));
+        persist();
+    });
+}
+
+// Find the item the dragged element should be inserted before, based on the
+// pointer's vertical position.
+function getDragAfterElement(container, y) {
+    const items = [...container.querySelectorAll('.station-item:not(.dragging)')];
+    let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+    for (const child of items) {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) closest = { offset, element: child };
+    }
+    return closest.element;
+}
+
+function saveFavoritesOrder() {
+    settings.favoritesOrder = favorites.map((f) => f.stationuuid);
+    saveSetting('favoritesOrder', settings.favoritesOrder);
+}
+
+function saveCustomOrder() {
+    settings.customOrder = customStations.map((c) => c.stationuuid);
+    saveSetting('customOrder', settings.customOrder);
 }
 
 // Navigate to next station
@@ -876,16 +836,16 @@ function setStationName(text) {
 function setConnectionState(state) {
     nowPlayingTrack.classList.remove('status-line', 'status-error');
     if (state === 'connecting') {
-        nowPlayingTrack.textContent = '⏳ Підключення…';
+        nowPlayingTrack.textContent = '⏳ Connecting…';
         nowPlayingTrack.classList.add('status-line');
     } else if (state === 'buffering') {
-        nowPlayingTrack.textContent = '⏳ Буферизація…';
+        nowPlayingTrack.textContent = '⏳ Buffering…';
         nowPlayingTrack.classList.add('status-line');
     } else if (state === 'reconnecting') {
-        nowPlayingTrack.textContent = `🔄 Перепідключення… (${reconnectAttempts}/${MAX_RECONNECT})`;
+        nowPlayingTrack.textContent = `🔄 Reconnecting… (${reconnectAttempts}/${MAX_RECONNECT})`;
         nowPlayingTrack.classList.add('status-line');
     } else if (state === 'error') {
-        nowPlayingTrack.textContent = '⚠ Не вдалося відтворити станцію';
+        nowPlayingTrack.textContent = '⚠ Could not play this station';
         nowPlayingTrack.classList.add('status-error');
     } else if (state === 'playing') {
         nowPlayingTrack.textContent = lastTrackTitle ? '♪ ' + lastTrackTitle : '';
@@ -1004,7 +964,7 @@ function showSongNotification(stationName, trackTitle) {
         if (trackTitle && trackTitle !== lastTrackTitle) {
             lastTrackTitle = trackTitle;
             new Notification(stationName, {
-                body: `Зараз грає: ${trackTitle}`,
+                body: `Now playing: ${trackTitle}`,
                 icon: currentStation.favicon || generatePlaceholderLogo(stationName),
                 silent: true
             });
@@ -1049,29 +1009,78 @@ function adjustBrightness(hexColor, factor) {
     return `rgb(${newR}, ${newG}, ${newB})`;
 }
 
-function setupAudioVisualization() {
-    if (!settings.visualizerEnabled) return;
+// Build the audio graph once: source -> EQ filter chain -> analyser ->
+// destination. The graph is created the first time playback starts and is
+// independent of the visualizer, so the equalizer works even when the
+// visualizer is turned off. createMediaElementSource can only be called once
+// per media element, hence the idempotent guard.
+function ensureAudioGraph() {
+    if (audioContext) return;
 
     try {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
-            analyser.smoothingTimeConstant = 0.8;
-            dataArray = new Uint8Array(analyser.frequencyBinCount);
-            smoothedData = new Float32Array(analyser.frequencyBinCount);
-        }
-
-        if (sourceNode) {
-            sourceNode.disconnect();
-        }
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.8;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        smoothedData = new Float32Array(analyser.frequencyBinCount);
 
         sourceNode = audioContext.createMediaElementSource(audioPlayer);
-        sourceNode.connect(analyser);
+
+        eqFilters = EQ_BANDS.map((band) => {
+            const filter = audioContext.createBiquadFilter();
+            filter.type = band.type;
+            filter.frequency.value = band.freq;
+            filter.Q.value = 1;
+            filter.gain.value = 0;
+            return filter;
+        });
+
+        compressorNode = audioContext.createDynamicsCompressor();
+
+        let node = sourceNode;
+        eqFilters.forEach((filter) => {
+            node.connect(filter);
+            node = filter;
+        });
+        node.connect(compressorNode);
+        compressorNode.connect(analyser);
         analyser.connect(audioContext.destination);
+
+        applyEqGains();
+        applyNormalization();
     } catch (error) {
-        console.error('Audio visualization setup error:', error);
+        console.error('Audio graph setup error:', error);
     }
+}
+
+// Drive the compressor as a loudness leveller. When disabled it is configured
+// transparently (ratio 1), so it can stay wired into the graph permanently.
+function applyNormalization() {
+    if (!compressorNode) return;
+    if (settings.normalizeEnabled) {
+        compressorNode.threshold.value = -24;
+        compressorNode.knee.value = 30;
+        compressorNode.ratio.value = 6;
+        compressorNode.attack.value = 0.003;
+        compressorNode.release.value = 0.25;
+    } else {
+        compressorNode.threshold.value = 0;
+        compressorNode.knee.value = 0;
+        compressorNode.ratio.value = 1;
+        compressorNode.attack.value = 0.003;
+        compressorNode.release.value = 0.25;
+    }
+}
+
+// Push the current equalizer settings onto the filter chain. When the EQ is
+// disabled every band is forced flat (0 dB), so the chain stays transparent.
+function applyEqGains() {
+    if (!eqFilters.length) return;
+    eqFilters.forEach((filter, i) => {
+        const gain = settings.eqEnabled ? (settings.eqGains[i] || 0) : 0;
+        filter.gain.value = gain;
+    });
 }
 
 function drawVisualization() {
@@ -1096,10 +1105,10 @@ function drawVisualization() {
         const smoothing = 0.65;
         const usableDataLength = Math.floor(dataArray.length * 0.6);
 
-        // Явно вимикаємо розмиття, яке могло залишитися від інших пресетів
+        // Explicitly disable any blur left over from other presets
         ctx.shadowBlur = 0;
 
-        // Ініціалізуємо піки та затримку, якщо вони ще не створені або кількість смуг змінилася
+        // Initialise peaks and hold if missing or the bar count changed
         if (style === 'peaks' && (!barPeaks || barPeaks.length !== numBars)) {
             barPeaks = new Float32Array(numBars).fill(height);
             peakHold = new Int32Array(numBars).fill(0);
@@ -1122,7 +1131,7 @@ function drawVisualization() {
 
             const barHeight = Math.max(3, (smoothedData[i] / 255) * height);
 
-            // Малюємо основну смугу (чітку, без тіней)
+            // Draw the main bar (crisp, no shadow)
             ctx.fillStyle = baseColor;
 
             const x = i * barWidth + gap / 2;
@@ -1133,24 +1142,24 @@ function drawVisualization() {
             ctx.roundRect(x, y, w, barHeight, [2, 2, 0, 0]);
             ctx.fill();
 
-            // Обробка ефекту піків (зависання та падіння)
+            // Peak effect (hold then fall)
             if (style === 'peaks') {
-                const peakY = height - barHeight - 4; // Позиція над смугою
-                
+                const peakY = height - barHeight - 4; // Position above the bar
+
                 if (peakY < barPeaks[i]) {
                     barPeaks[i] = peakY;
-                    peakHold[i] = 30; // Трохи збільшив час зависання
+                    peakHold[i] = 30; // Hold time before the peak falls
                 } else {
                     if (peakHold[i] > 0) {
                         peakHold[i]--;
                     } else {
-                        barPeaks[i] += 1.5; // Трохи швидше падіння для різкості
+                        barPeaks[i] += 1.5; // Slightly faster fall for sharpness
                     }
                 }
 
                 if (barPeaks[i] > height - 4) barPeaks[i] = height - 4;
 
-                // Малюємо пік тим самим кольором, що й основна смуга
+                // Draw the peak in the same colour as the bar
                 ctx.fillStyle = baseColor; 
                 ctx.beginPath();
                 ctx.roundRect(x, barPeaks[i], w, 2, [0, 0, 0, 0]);
@@ -1190,14 +1199,14 @@ function drawVisualization() {
         const radiusX = (width / 2) * 0.8;
         const radiusY = (height / 2) * 0.6;
         const numBars = 64;
-        // Використовуємо меншу частину даних (низькі та середні), де найбільше активності
+        // Use the lower/mid part of the data where most activity is
         const usableDataLength = Math.floor(dataArray.length * 0.55);
 
         ctx.shadowBlur = 10;
         ctx.shadowColor = baseColor;
 
         for (let i = 0; i < numBars; i++) {
-            // Використовуємо логарифмічне або більш щільне відображення частот
+            // Use a denser frequency mapping
             const freqIndex = Math.floor((i / numBars) * usableDataLength);
             const value = dataArray[freqIndex] * sensitivity;
             const barHeight = (value / 255) * 25;
@@ -1249,12 +1258,12 @@ function drawVisualization() {
         const centerY = height / 2;
         const usableDataLength = Math.floor(dataArray.length * 0.5);
 
-        // Визначаємо інтенсивність басів для пульсації "сцени"
+        // Measure bass intensity to pulse the "stage"
         let bassSum = 0;
         for (let j = 0; j < 5; j++) bassSum += dataArray[j];
         const bassInten = (bassSum / (5 * 255)) * sensitivity;
         
-        // Малюємо легке фонове сяйво, що пульсує з басом
+        // Draw a soft background glow pulsing with the bass
         if (bassInten > 0.4) {
             const glow = ctx.createRadialGradient(width/2, centerY, 10, width/2, centerY, width/2);
             glow.addColorStop(0, adjustBrightness(baseColor, 0.3));
@@ -1274,7 +1283,7 @@ function drawVisualization() {
             const yTop = centerY - value - 2;
             const barHeight = (value * 2) + 4;
 
-            // Ефект градієнту від центру до країв
+            // Gradient effect from centre to edges
             const grad = ctx.createLinearGradient(0, centerY - value, 0, centerY + value);
             grad.addColorStop(0, adjustBrightness(baseColor, 1.5));
             grad.addColorStop(0.5, baseColor);
@@ -1297,9 +1306,7 @@ function drawVisualization() {
 function startVisualization() {
     if (!settings.visualizerEnabled) return;
 
-    if (!audioContext) {
-        setupAudioVisualization();
-    }
+    ensureAudioGraph();
 
     if (audioContext && audioContext.state === 'suspended') {
         audioContext.resume();
@@ -1367,8 +1374,14 @@ function onPlaySuccess() {
     isPlaying = true;
     reconnectAttempts = 0;
     clearTimeout(reconnectTimer);
+    // Fade the audio in from silence to the user's chosen volume
+    fadeTo(targetVolume());
     updatePlayButton();
     startMetadataPolling();
+    // Build the audio graph (and resume it) so the equalizer applies even
+    // when the visualizer is disabled.
+    ensureAudioGraph();
+    if (audioContext && audioContext.state === 'suspended') audioContext.resume();
     startVisualization();
     startLiveTimer();
     addToRecentlyPlayed(currentStation);
@@ -1422,7 +1435,7 @@ function playHlsStation(url, onSuccess, onError) {
     onError = onError || onPlayError;
 
     if (typeof Hls === 'undefined') {
-        onError(new Error('hls.js не завантажено (немає src/hls.min.js)'));
+        onError(new Error('hls.js not loaded (missing src/hls.min.js)'));
         return;
     }
 
@@ -1451,7 +1464,7 @@ function playHlsStation(url, onSuccess, onError) {
         audioPlayer.src = getProxiedUrl(url);
         audioPlayer.play().then(onSuccess).catch(onError);
     } else {
-        onError(new Error('HLS не підтримується'));
+        onError(new Error('HLS is not supported'));
     }
 }
 
@@ -1459,10 +1472,17 @@ function playHlsStation(url, onSuccess, onError) {
 function playStation() {
     if (!currentStation) return;
 
+    // Stop any active recording when switching to a new station
+    if (isRecording) stopRecording();
+
     wantPlayback = true;
     lastTrackTitle = '';
     clearTimeout(reconnectTimer);
     setConnectionState('connecting');
+
+    // Start silent so playback can fade in once the stream begins
+    cancelFade();
+    audioPlayer.volume = 0;
 
     // Tear down any previous HLS instance before switching streams
     if (hls) {
@@ -1486,23 +1506,34 @@ function stopStation() {
     wantPlayback = false;
     reconnectAttempts = 0;
     clearTimeout(reconnectTimer);
-    audioPlayer.pause();
-    if (hls) {
-        hls.destroy();
-        hls = null;
-    }
-    audioPlayer.src = '';
+    stopMetadataPolling();
+    if (isRecording) stopRecording();
+
+    // Cut the stream and tear everything down once the fade-out finishes
+    const finalize = () => {
+        audioPlayer.pause();
+        if (hls) {
+            hls.destroy();
+            hls = null;
+        }
+        audioPlayer.src = '';
+        // Leave the element at the user's level for the next play
+        audioPlayer.volume = targetVolume();
+        stopVisualization();
+    };
+
     isPlaying = false;
     updatePlayButton();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-    stopMetadataPolling();
-    stopVisualization();
     stopLiveTimer();
     nowPlayingTrack.textContent = '';
     nowPlayingTrack.classList.remove('marquee');
     if (previewBtn) {
-        previewBtn.textContent = 'Прослухати';
+        previewBtn.textContent = 'Preview';
     }
+
+    // Smoothly fade the audio out before stopping (visualizer keeps animating)
+    fadeTo(0, finalize);
 }
 
 // Toggle play/pause
@@ -1654,7 +1685,7 @@ function renderTrackHistory() {
         trackHistoryList.replaceChildren();
         const hint = document.createElement('div');
         hint.className = 'loading-hint';
-        hint.textContent = 'Історія порожня';
+        hint.textContent = 'History is empty';
         trackHistoryList.appendChild(hint);
         return;
     }
@@ -1680,7 +1711,7 @@ function renderTrackHistory() {
 
         const ytBtn = document.createElement('button');
         ytBtn.className = 'action-btn track-history-yt';
-        ytBtn.title = 'Знайти на YouTube';
+        ytBtn.title = 'Find on YouTube';
         ytBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31.3 31.3 0 0 0 0 12a31.3 31.3 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31.3 31.3 0 0 0 24 12a31.3 31.3 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6z" fill="currentColor"/></svg>`;
         ytBtn.addEventListener('click', () => openYouTubeSearch(entry.title));
 
@@ -1697,7 +1728,7 @@ async function clearTrackHistory() {
         catch (e) { console.error('Clear track history error:', e); }
     }
     renderTrackHistory();
-    toast('Історію треків очищено', 'success');
+    toast('Track history cleared', 'success');
 }
 
 // Try to get favicon from domain
@@ -1739,17 +1770,17 @@ function generatePlaceholderLogo(name) {
 function previewCustomUrl() {
     if (isPlaying && currentStation && currentStation.stationuuid && currentStation.stationuuid.startsWith('preview_')) {
         stopStation();
-        previewBtn.textContent = 'Прослухати';
+        previewBtn.textContent = 'Preview';
         return;
     }
 
     const url = customUrlInput.value.trim();
     if (!url) {
-        toast('Введіть URL потоку', 'error');
+        toast('Enter a stream URL', 'error');
         return;
     }
 
-    const name = customNameInput.value.trim() || 'Прослуховування';
+    const name = customNameInput.value.trim() || 'Preview';
     const favicon = getFaviconFromUrl(url);
 
     const tempStation = {
@@ -1758,12 +1789,12 @@ function previewCustomUrl() {
         url: url,
         url_resolved: url,
         tags: customGenreInput.value.trim(),
-        country: 'Прослуховування',
+        country: 'Preview',
         favicon: favicon
     };
 
     currentStation = tempStation;
-    setStationName(name + ' (Тест)');
+    setStationName(name + ' (Test)');
 
     stationLogo.classList.remove('hidden');
     if (favicon) {
@@ -1784,18 +1815,25 @@ function previewCustomUrl() {
         hls = null;
     }
 
+    // Start silent so the preview can fade in
+    cancelFade();
+    audioPlayer.volume = 0;
+
     const onPreviewOk = () => {
         isPlaying = true;
+        fadeTo(targetVolume());
         updatePlayButton();
+        ensureAudioGraph();
+        if (audioContext && audioContext.state === 'suspended') audioContext.resume();
         startVisualization();
-        previewBtn.textContent = 'Зупинити';
+        previewBtn.textContent = 'Stop';
     };
     const onPreviewError = (error) => {
         console.error('Preview error:', error);
-        toast('Помилка відтворення URL: ' + (error && error.message ? error.message : error), 'error');
+        toast('Failed to play URL: ' + (error && error.message ? error.message : error), 'error');
         isPlaying = false;
         updatePlayButton();
-        previewBtn.textContent = 'Прослухати';
+        previewBtn.textContent = 'Preview';
     };
 
     if (isHlsStream(tempStation, url)) {
@@ -1813,7 +1851,7 @@ async function addCustomStation() {
     const genre = customGenreInput.value.trim();
 
     if (!name || !url) {
-        toast('Введіть назву та URL станції', 'error');
+        toast('Enter a station name and URL', 'error');
         return;
     }
 
@@ -1823,7 +1861,7 @@ async function addCustomStation() {
         url: url,
         url_resolved: url,
         tags: genre,
-        country: 'Власна станція',
+        country: 'Custom station',
         favicon: getFaviconFromUrl(url),
         bitrate: 0,
         codec: ''
@@ -1877,7 +1915,7 @@ async function saveEditedStation() {
     const genre = editStationGenreInput.value.trim();
 
     if (!name || !url) {
-        toast('Введіть назву та URL', 'error');
+        toast('Enter a name and URL', 'error');
         return;
     }
 
@@ -1919,7 +1957,7 @@ async function saveEditedStation() {
 // Render custom stations list
 function renderCustomStations() {
     if (customStations.length === 0) {
-        customStationsList.innerHTML = '<div class="loading-hint">Власних станцій немає</div>';
+        customStationsList.innerHTML = '<div class="loading-hint">No custom stations</div>';
         return;
     }
 
@@ -1975,7 +2013,7 @@ function renderCustomStations() {
         const editBtn = document.createElement('button');
         editBtn.className = 'action-btn edit-btn';
         editBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>`;
-        editBtn.title = 'Редагувати';
+        editBtn.title = 'Edit';
         editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openEditModal(station);
@@ -2005,8 +2043,11 @@ function renderCustomStations() {
             selectStation(station, item);
         });
 
+        item.dataset.stationuuid = station.stationuuid;
         customStationsList.appendChild(item);
     });
+
+    setupDragReorder(customStationsList, customStations, saveCustomOrder);
 }
 
 // Export/Import
@@ -2026,7 +2067,7 @@ async function exportToJson(data, defaultFilename) {
             }
         } catch (error) {
             console.error('Export error:', error);
-            toast('Помилка експорту: ' + error.message, 'error');
+            toast('Export error: ' + error.message, 'error');
         }
     } else {
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -2041,7 +2082,7 @@ async function exportToJson(data, defaultFilename) {
 
 async function exportFavorites() {
     if (favorites.length === 0) {
-        toast('Немає обраних станцій для експорту', 'error');
+        toast('No favorite stations to export', 'error');
         return;
     }
     await exportToJson(favorites, 'radio-favorites.json');
@@ -2050,7 +2091,7 @@ async function exportFavorites() {
 // Export current playing station
 async function exportCurrentStation() {
     if (!currentStation) {
-        toast('Немає активної станції', 'error');
+        toast('No active station', 'error');
         return;
     }
     await exportToJson([currentStation], `${currentStation.name.replace(/[^a-zA-Z0-9]/g, '_')}.json`);
@@ -2061,7 +2102,7 @@ function updateCurrentStationInfo() {
     if (!currentStationInfo) return;
 
     if (!currentStation) {
-        currentStationInfo.innerHTML = '<div class="current-station-empty">Немає активної станції</div>';
+        currentStationInfo.innerHTML = '<div class="current-station-empty">No active station</div>';
         return;
     }
 
@@ -2092,14 +2133,14 @@ function updateCurrentStationInfo() {
 
     const exportButton = document.createElement('button');
     exportButton.className = 'btn-export';
-    exportButton.textContent = 'Експортувати';
+    exportButton.textContent = 'Export';
     exportButton.addEventListener('click', exportCurrentStation);
 
     form.append(
         logo,
-        makeField(s.name, 'Назва'),
-        makeField(s.url_resolved || s.url, 'URL потоку'),
-        makeField(genre, 'Жанр'),
+        makeField(s.name, 'Name'),
+        makeField(s.url_resolved || s.url, 'Stream URL'),
+        makeField(genre, 'Genre'),
         exportButton
     );
     currentStationInfo.appendChild(form);
@@ -2160,11 +2201,11 @@ async function importPlaylistStations(entries) {
 
         const station = {
             stationuuid: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-            name: entry.name || 'Імпортована станція',
+            name: entry.name || 'Imported station',
             url: entry.url,
             url_resolved: entry.url,
             tags: '',
-            country: 'Імпортовано',
+            country: 'Imported',
             favicon: getFaviconFromUrl(entry.url),
             bitrate: 0,
             codec: ''
@@ -2183,7 +2224,7 @@ async function importPlaylistStations(entries) {
     }
     localStorage.setItem('customStations', JSON.stringify(customStations));
     renderCustomStations();
-    toast(`Імпортовано станцій: ${added}`, 'success');
+    toast(`Stations imported: ${added}`, 'success');
 }
 
 // Import the app's own JSON export format (favorites or custom stations)
@@ -2191,7 +2232,7 @@ function importStationsJson(text) {
     const data = JSON.parse(text);
 
     if (!Array.isArray(data)) {
-        toast('Неправильний формат файлу', 'error');
+        toast('Invalid file format', 'error');
         return;
     }
 
@@ -2211,7 +2252,7 @@ function importStationsJson(text) {
         }
         localStorage.setItem('customStations', JSON.stringify(customStations));
         renderCustomStations();
-        toast('Власні станції імпортовано', 'success');
+        toast('Custom stations imported', 'success');
     } else {
         for (const station of data) {
             if (!favorites.some(f => f.stationuuid === station.stationuuid)) {
@@ -2225,7 +2266,7 @@ function importStationsJson(text) {
             }
         }
         localStorage.setItem('favorites', JSON.stringify(favorites));
-        toast('Обрані станції імпортовано', 'success');
+        toast('Favorites imported', 'success');
     }
 }
 
@@ -2250,7 +2291,7 @@ function importStations(event) {
                 importStationsJson(text);
             }
         } catch (error) {
-            toast('Помилка читання файлу: ' + error.message, 'error');
+            toast('File read error: ' + error.message, 'error');
         }
     };
     reader.readAsText(file);
@@ -2364,6 +2405,163 @@ function toggleVisualizer() {
         visualizerCanvas.classList.add('hidden');
         stopVisualization();
     }
+}
+
+// Preset gain curves, in band order [60, 250, 1K, 4K, 12K] (dB)
+const EQ_PRESETS = {
+    flat: [0, 0, 0, 0, 0],
+    bass: [8, 5, 1, 0, 0],
+    treble: [0, 0, 1, 5, 8],
+    vocal: [-3, 0, 4, 4, 1],
+    rock: [5, 2, -1, 3, 5]
+};
+
+// Build the per-band sliders once and reflect the saved EQ state.
+function buildEqUi() {
+    if (!eqBandsContainer) return;
+    eqBandsContainer.innerHTML = '';
+
+    EQ_BANDS.forEach((band, i) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'eq-band';
+
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.className = 'custom-slider eq-slider';
+        slider.min = '-12';
+        slider.max = '12';
+        slider.step = '1';
+        slider.value = String(settings.eqGains[i] || 0);
+        slider.dataset.band = String(i);
+        slider.addEventListener('input', onEqSliderInput);
+
+        const label = document.createElement('span');
+        label.className = 'eq-band-label';
+        label.textContent = band.label;
+
+        wrap.appendChild(slider);
+        wrap.appendChild(label);
+        eqBandsContainer.appendChild(wrap);
+    });
+
+    eqEnabledCheckbox.checked = settings.eqEnabled;
+    updateEqDisabledState();
+}
+
+// Dim and disable the band sliders/preset when the EQ is switched off.
+function updateEqDisabledState() {
+    const off = !settings.eqEnabled;
+    eqBandsContainer.classList.toggle('disabled', off);
+    eqPresetSelect.disabled = off;
+    eqBandsContainer.querySelectorAll('.eq-slider').forEach((s) => { s.disabled = off; });
+}
+
+function onEqSliderInput(e) {
+    const i = parseInt(e.target.dataset.band, 10);
+    settings.eqGains[i] = parseInt(e.target.value, 10);
+    applyEqGains();
+    saveSetting('eqGains', settings.eqGains);
+}
+
+function toggleEq() {
+    settings.eqEnabled = eqEnabledCheckbox.checked;
+    saveSetting('eqEnabled', settings.eqEnabled);
+    updateEqDisabledState();
+    applyEqGains();
+}
+
+function applyEqPreset() {
+    const preset = EQ_PRESETS[eqPresetSelect.value];
+    if (!preset) return;
+    settings.eqGains = preset.slice();
+    eqBandsContainer.querySelectorAll('.eq-slider').forEach((s, i) => {
+        s.value = String(settings.eqGains[i]);
+    });
+    applyEqGains();
+    saveSetting('eqGains', settings.eqGains);
+}
+
+function toggleNormalization() {
+    settings.normalizeEnabled = normalizeCheckbox.checked;
+    saveSetting('normalizeEnabled', settings.normalizeEnabled);
+    applyNormalization();
+}
+
+// --- Stream recording -------------------------------------------------------
+
+let isRecording = false;
+
+function sanitizeFilename(name) {
+    return (name || 'recording').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+}
+
+// Map a station codec to a sensible file extension for the saved capture.
+function recordingExtension(station) {
+    const codec = (station && station.codec ? station.codec : '').toUpperCase();
+    if (codec.includes('AAC')) return 'aac';
+    if (codec.includes('OGG') || codec.includes('VORBIS') || codec.includes('OPUS')) return 'ogg';
+    if (codec.includes('FLAC')) return 'flac';
+    return 'mp3';
+}
+
+async function toggleRecording() {
+    if (!hasTauriApi) {
+        toast('Recording is only available in the desktop app', 'error');
+        return;
+    }
+    if (isRecording) {
+        await stopRecording();
+    } else {
+        await startRecording();
+    }
+}
+
+async function startRecording() {
+    if (!currentStation) {
+        toast('Start playing a station first', 'error');
+        return;
+    }
+    const { invoke } = window.__TAURI__.core;
+    const { save } = window.__TAURI__.dialog;
+
+    const ext = recordingExtension(currentStation);
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const defaultName = `${sanitizeFilename(currentStation.name)}_${stamp}.${ext}`;
+
+    try {
+        const path = await save({
+            defaultPath: defaultName,
+            filters: [{ name: 'Audio', extensions: [ext] }]
+        });
+        if (!path) return;
+
+        const url = currentStation.url_resolved || currentStation.url;
+        await invoke('start_recording', { url, path });
+        isRecording = true;
+        updateRecordButton();
+        toast('Recording started', 'info');
+    } catch (error) {
+        console.error('Recording start error:', error);
+        toast('Recording failed: ' + (error && error.message ? error.message : error), 'error');
+    }
+}
+
+async function stopRecording() {
+    const { invoke } = window.__TAURI__.core;
+    try {
+        await invoke('stop_recording');
+    } catch (error) {
+        console.error('Recording stop error:', error);
+    }
+    isRecording = false;
+    updateRecordButton();
+    toast('Recording saved', 'info');
+}
+
+function updateRecordButton() {
+    if (!recordBtn) return;
+    recordBtn.classList.toggle('recording', isRecording);
+    recordBtn.title = isRecording ? 'Stop recording' : 'Record stream';
 }
 
 function changeVisualizerColor() {
@@ -2480,13 +2678,13 @@ function startSleepTimer(minutes) {
         if (Date.now() >= sleepTimerEnd) {
             cancelSleepTimer();
             if (isPlaying) stopStation();
-            toast('Таймер сну: відтворення зупинено', 'info');
+            toast('Sleep timer: playback stopped', 'info');
         } else {
             updateSleepTimerDisplay();
         }
     }, 1000);
 
-    toast(`Таймер сну: ${minutes} хв`, 'success');
+    toast(`Sleep timer: ${minutes} min`, 'success');
 }
 
 function cancelSleepTimer() {
@@ -2565,12 +2763,12 @@ async function copyCurrentTrack() {
     // Brief "copied" confirmation on the button
     trackCopyBtn.classList.add('copied');
     trackCopyBtn.innerHTML = CHECK_ICON_SVG;
-    trackCopyBtn.title = 'Скопійовано';
+    trackCopyBtn.title = 'Copied';
     clearTimeout(copyResetTimer);
     copyResetTimer = setTimeout(() => {
         trackCopyBtn.classList.remove('copied');
         trackCopyBtn.innerHTML = COPY_ICON_SVG;
-        trackCopyBtn.title = 'Копіювати назву треку';
+        trackCopyBtn.title = 'Copy track name';
     }, 1400);
 }
 
@@ -2640,14 +2838,31 @@ filtersToggleBtn.addEventListener('click', () => {
 });
 
 // Re-run search when a filter changes (keeps results in sync with the panel)
-[filterCountry, filterBitrate, filterCodec].forEach(sel => {
+[filterCountry, filterTag, filterBitrate, filterCodec].forEach(sel => {
     sel.addEventListener('change', () => {
-        const activePreset = document.querySelector('.preset-btn.active');
-        const tag = activePreset && !['favorites', 'somafm'].includes(activePreset.dataset.genre)
-            ? activePreset.dataset.genre : '';
+        // A typed tag takes priority; otherwise fall back to the active preset
+        let tag = filterTag.value.trim();
+        if (!tag) {
+            const activePreset = document.querySelector('.preset-btn.active');
+            tag = activePreset && !['favorites', 'somafm'].includes(activePreset.dataset.genre)
+                ? activePreset.dataset.genre : '';
+        }
         searchStations(searchInput.value.trim(), tag);
     });
 });
+
+// Infinite scroll: load the next page when the list nears the bottom. The
+// scrolling element differs between layouts (the whole radio-layout in narrow
+// view, the list itself in wide view), so listen on both.
+function onListScroll(e) {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 120) {
+        loadMoreStations();
+    }
+}
+stationsList.addEventListener('scroll', onListScroll);
+const radioLayoutEl = document.querySelector('.radio-layout');
+if (radioLayoutEl) radioLayoutEl.addEventListener('scroll', onListScroll);
 
 // Re-evaluate the station name marquee when the window is resized
 window.addEventListener('resize', () => {
@@ -2735,6 +2950,10 @@ importFile.addEventListener('change', importStations);
 compactModeCheckbox.addEventListener('change', () => toggleCompactMode());
 visualizerEnabledCheckbox.addEventListener('change', toggleVisualizer);
 visualizerColorPicker.addEventListener('input', changeVisualizerColor);
+eqEnabledCheckbox.addEventListener('change', toggleEq);
+eqPresetSelect.addEventListener('change', applyEqPreset);
+if (normalizeCheckbox) normalizeCheckbox.addEventListener('change', toggleNormalization);
+if (recordBtn) recordBtn.addEventListener('click', toggleRecording);
 visualizerCanvas.addEventListener('click', cycleVisualizerStyle);
 enterCompactBtn.addEventListener('click', enterCompactMode);
 exitCompactBtn.addEventListener('click', exitCompactMode);
@@ -2772,37 +2991,13 @@ visualizerSensitivityInput.addEventListener('input', () => {
     saveSetting('visualizerSensitivity', settings.visualizerSensitivity);
 });
 
-// Keyboard shortcuts
+// Keyboard shortcuts: Space toggles play/stop (only when not typing in a field)
 document.addEventListener('keydown', (e) => {
-    // Ctrl/Cmd + K focuses the search field from anywhere
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
-        e.preventDefault();
-        searchInput.focus();
-        searchInput.select();
-        return;
-    }
-
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
-    switch(e.key) {
-        case ' ':
-            e.preventDefault();
-            togglePlay();
-            break;
-        case 'ArrowRight':
-            nextStation();
-            break;
-        case 'ArrowLeft':
-            prevStation();
-            break;
-        case 'ArrowUp':
-            e.preventDefault();
-            volumeUp();
-            break;
-        case 'ArrowDown':
-            e.preventDefault();
-            volumeDown();
-            break;
+    if (e.key === ' ') {
+        e.preventDefault();
+        togglePlay();
     }
 });
 
