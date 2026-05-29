@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,14 +11,14 @@
 </head>
 <body>
     <div class="container" id="app-container">
-        <!-- Верхня панель: бренд + вкладки + перемикач вигляду -->
+        <!-- Top bar: brand + tabs + view switch -->
         <header class="app-header">
             <div class="brand">
                 <div class="brand-mark">
                     <svg viewBox="0 0 24 24"><path d="M20 6H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-8 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm8-6h-2V9h2v2zm-2 4h2v-2h-2v2z" fill="currentColor"/></svg>
                 </div>
                 <div class="brand-text">
-                    <span class="brand-name">радіо</span>
+                    <span class="brand-name">radio</span>
                     <span class="brand-status" id="brand-status">v1.0.0 · OFF AIR</span>
                 </div>
             </div>
@@ -26,51 +26,51 @@
             <nav class="tabs">
                 <button class="tab active" data-tab="radio">
                     <svg viewBox="0 0 24 24" class="tab-icon"><path d="M20 6H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-8 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm8-6h-2V9h2v2zm-2 4h2v-2h-2v2z" fill="currentColor"/></svg>
-                    Радіо
+                    Radio
                 </button>
                 <button class="tab" data-tab="custom">
                     <svg viewBox="0 0 24 24" class="tab-icon"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/></svg>
-                    Мої станції
+                    My Stations
                 </button>
                 <button class="tab" data-tab="settings">
                     <svg viewBox="0 0 24 24" class="tab-icon"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></svg>
-                    Налаштування
+                    Settings
                 </button>
             </nav>
 
             <div class="header-actions">
-                <!-- Перемикач вигляду: вузький / широкий -->
+                <!-- View switch: narrow / wide -->
                 <div class="view-switch" id="view-switch">
-                    <button class="view-opt active" data-view="narrow" title="Вузький вигляд">
+                    <button class="view-opt active" data-view="narrow" title="Narrow view">
                         <svg viewBox="0 0 24 24"><rect x="8.5" y="4" width="7" height="16" rx="1.6" fill="currentColor"/></svg>
                     </button>
-                    <button class="view-opt" data-view="wide" title="Широкий вигляд">
+                    <button class="view-opt" data-view="wide" title="Wide view">
                         <svg viewBox="0 0 24 24"><rect x="3" y="6" width="8" height="12" rx="1.4" fill="currentColor"/><rect x="13" y="6" width="8" height="12" rx="1.4" fill="currentColor"/></svg>
                     </button>
                 </div>
             </div>
         </header>
 
-        <!-- Вкладка Радіо -->
+        <!-- Radio tab -->
         <div class="tab-content active" id="tab-radio">
             <div class="radio-layout">
-                <!-- Колонка плеєра -->
+                <!-- Player column -->
                 <div class="radio-main">
                     <div class="player-section">
-                        <!-- Панель керування вікном -->
+                        <!-- Window controls -->
                         <div class="window-controls">
-                            <button id="always-on-top-btn" class="control-circle-btn" title="Закріпити зверху">
+                            <button id="always-on-top-btn" class="control-circle-btn" title="Pin on top">
                                 <svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" fill="currentColor"/></svg>
                             </button>
-                            <button id="enter-compact-btn" class="control-circle-btn" title="Компактний режим">
+                            <button id="enter-compact-btn" class="control-circle-btn" title="Compact mode">
                                 <svg viewBox="0 0 24 24"><path d="M19 19H5V5h14v14zM7 7h10v2H7V7z" fill="currentColor"/></svg>
                             </button>
-                            <button id="exit-compact-btn" class="control-circle-btn" title="Вийти з компактного режиму">
+                            <button id="exit-compact-btn" class="control-circle-btn" title="Exit compact mode">
                                 <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" fill="currentColor"/></svg>
                             </button>
                         </div>
 
-                        <!-- Лого + назва станції -->
+                        <!-- Logo + station name -->
                         <div class="player-stage">
                             <div class="station-logo-container">
                                 <img id="station-logo" src="" alt="" class="station-logo hidden">
@@ -83,28 +83,28 @@
                                     <span class="live-badge" id="live-badge">LIVE</span>
                                 </div>
                                 <div class="station-name-row">
-                                    <span id="station-name">Оберіть радіостанцію</span>
+                                    <span id="station-name">Choose a radio station</span>
                                 </div>
                                 <div class="station-sub" id="station-sub"></div>
                             </div>
                         </div>
 
-                        <!-- Картка треку -->
+                        <!-- Track card -->
                         <div class="track-card" id="track-card">
                             <div class="track-card-thumb" id="track-card-thumb"></div>
                             <div class="track-card-body">
                                 <div class="track-card-label">Track</div>
                                 <div id="now-playing-track" class="now-playing-track"></div>
                             </div>
-                            <button class="track-copy-btn" id="track-copy-btn" title="Копіювати назву треку">
+                            <button class="track-copy-btn" id="track-copy-btn" title="Copy track name">
                                 <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" fill="currentColor"/></svg>
                             </button>
-                            <button class="track-youtube-btn" id="track-youtube-btn" title="Знайти трек на YouTube">
+                            <button class="track-youtube-btn" id="track-youtube-btn" title="Find track on YouTube">
                                 <svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31.3 31.3 0 0 0 0 12a31.3 31.3 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31.3 31.3 0 0 0 24 12a31.3 31.3 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6z" fill="currentColor"/></svg>
                             </button>
                         </div>
 
-                        <!-- Метатеги (вузький вигляд) -->
+                        <!-- Meta tags (narrow view) -->
                         <div class="station-meta">
                             <span id="meta-genre" class="meta-item hidden"></span>
                             <span id="meta-bitrate" class="meta-item hidden"></span>
@@ -112,7 +112,7 @@
                             <span id="meta-country" class="meta-item hidden"></span>
                         </div>
 
-                        <!-- Транспорт: спектр + кнопки + час + гучність -->
+                        <!-- Transport: spectrum + buttons + time + volume -->
                         <div class="player-transport">
                             <div class="spectrum-panel">
                                 <div class="spectrum-head">
@@ -126,16 +126,19 @@
                             </div>
 
                             <div class="transport-buttons">
-                                <button id="prev-btn" class="nav-btn" title="Попередня">
+                                <button id="prev-btn" class="nav-btn" title="Previous">
                                     <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="currentColor"/></svg>
                                 </button>
-                                <button id="play-btn" class="play-btn" title="Відтворення/Пауза">
+                                <button id="play-btn" class="play-btn" title="Play/Pause">
                                     <span class="play-icon">
                                         <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
                                     </span>
                                 </button>
-                                <button id="next-btn" class="nav-btn" title="Наступна">
+                                <button id="next-btn" class="nav-btn" title="Next">
                                     <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-10 12l8.5-6L6 6z" fill="currentColor"/></svg>
+                                </button>
+                                <button id="record-btn" class="nav-btn record-btn" title="Record stream">
+                                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor"/></svg>
                                 </button>
                             </div>
 
@@ -149,9 +152,9 @@
 
                         </div>
 
-                        <!-- Горизонтальний регулятор гучності -->
+                        <!-- Horizontal volume control -->
                         <div class="volume-bar">
-                            <button id="volume-mute" class="volume-mute-btn" title="Вимкнути звук">
+                            <button id="volume-mute" class="volume-mute-btn" title="Mute">
                                 <svg class="vol-icon vol-icon-high" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" fill="currentColor"/></svg>
                                 <svg class="vol-icon vol-icon-muted" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" fill="currentColor"/></svg>
                             </button>
@@ -161,43 +164,39 @@
                     </div>
                 </div>
 
-                <!-- Колонка пошуку та списку -->
+                <!-- Search and list column -->
                 <div class="radio-side">
-                    <!-- Секція пошуку з фільтрами -->
+                    <!-- Search section with filters -->
                     <div class="search-section">
                         <div class="search-row">
                             <div class="search-box">
-                                <button id="search-btn" class="search-go" title="Шукати">
+                                <button id="search-btn" class="search-go" title="Search">
                                     <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor"/></svg>
                                 </button>
-                                <input type="text" id="search-input" placeholder="Пошук радіостанцій...">
-                                <span class="search-kbd">Ctrl K</span>
+                                <input type="text" id="search-input" placeholder="Search radio stations...">
                             </div>
                             <button id="filters-toggle-btn" class="filters-toggle-btn">
                                 <svg viewBox="0 0 24 24" width="14" height="14" class="filter-icon"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" fill="currentColor"/></svg>
-                                Фільтри
+                                Filters
                             </button>
                         </div>
 
                         <div class="filters-panel hidden" id="filters-panel">
                             <div class="filter-row">
                                 <div class="filter-group">
-                                    <label for="filter-country">Країна</label>
-                                    <select id="filter-country">
-                                        <option value="">Усі країни</option>
-                                        <option value="Ukraine">Україна</option>
-                                        <option value="United States">США</option>
-                                        <option value="United Kingdom">Велика Британія</option>
-                                        <option value="Germany">Німеччина</option>
-                                        <option value="France">Франція</option>
-                                        <option value="Poland">Польща</option>
-                                        <option value="Italy">Італія</option>
-                                    </select>
+                                    <label for="filter-country">Country</label>
+                                    <input type="text" id="filter-country" list="country-list" placeholder="All countries" autocomplete="off">
+                                    <datalist id="country-list"></datalist>
                                 </div>
                                 <div class="filter-group">
-                                    <label for="filter-bitrate">Якість (Мін. бітрейт)</label>
+                                    <label for="filter-tag">Tag / genre</label>
+                                    <input type="text" id="filter-tag" list="tag-list" placeholder="Any tag" autocomplete="off">
+                                    <datalist id="tag-list"></datalist>
+                                </div>
+                                <div class="filter-group">
+                                    <label for="filter-bitrate">Quality (Min. bitrate)</label>
                                     <select id="filter-bitrate">
-                                        <option value="0">Будь-яка</option>
+                                        <option value="0">Any</option>
                                         <option value="64">64+ kbps</option>
                                         <option value="128">128+ kbps (HQ)</option>
                                         <option value="192">192+ kbps (VHQ)</option>
@@ -205,9 +204,9 @@
                                     </select>
                                 </div>
                                 <div class="filter-group">
-                                    <label for="filter-codec">Кодек</label>
+                                    <label for="filter-codec">Codec</label>
                                     <select id="filter-codec">
-                                        <option value="">Будь-який</option>
+                                        <option value="">Any</option>
                                         <option value="MP3">MP3</option>
                                         <option value="AAC">AAC / AAC+</option>
                                     </select>
@@ -216,7 +215,7 @@
                         </div>
 
                         <div class="presets">
-                            <button class="preset-btn preset-favorites" data-genre="favorites">★ Обрані</button>
+                            <button class="preset-btn preset-favorites" data-genre="favorites">★ Favorites</button>
                             <button class="preset-btn preset-somafm" data-genre="somafm">SomaFM</button>
                             <button class="preset-btn" data-genre="pop">Pop</button>
                             <button class="preset-btn" data-genre="dance">Dance</button>
@@ -230,143 +229,170 @@
                         </div>
                     </div>
 
-                    <!-- Нещодавно відтворені станції -->
+                    <!-- Recently played stations -->
                     <div class="recently-played-section hidden" id="recently-played-section">
                         <h4>Recently Played</h4>
                         <div class="recently-played-list" id="recently-played-list"></div>
                     </div>
 
-                    <!-- Список станцій -->
+                    <!-- Station list -->
                     <div class="stations-section">
                         <div class="stations-head">
                             <h4>All Stations</h4>
                             <span class="stations-count" id="stations-count"></span>
                         </div>
                         <div id="stations-list" class="stations-list">
-                            <div class="loading-hint">Знайдіть радіостанції через пошук вище</div>
+                            <div class="loading-hint">Find radio stations using the search above</div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Вкладка Мої станції -->
+        <!-- My Stations tab -->
         <div class="tab-content" id="tab-custom">
             <div class="custom-section">
-                <h3>Зараз грає</h3>
+                <h3>Now Playing</h3>
                 <div id="current-station-info" class="current-station-info">
-                    <div class="current-station-empty">Немає активної станції</div>
+                    <div class="current-station-empty">No active station</div>
                 </div>
 
                 <div class="track-history-head">
-                    <h3>Історія треків</h3>
-                    <button id="clear-history-btn" class="clear-history-btn" title="Очистити історію треків">
+                    <h3>Track History</h3>
+                    <button id="clear-history-btn" class="clear-history-btn" title="Clear track history">
                         <svg viewBox="0 0 24 24" width="15" height="15"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>
-                        Очистити
+                        Clear
                     </button>
                 </div>
                 <div id="track-history-list" class="track-history-list">
-                    <div class="loading-hint">Історія порожня</div>
+                    <div class="loading-hint">History is empty</div>
                 </div>
 
-                <h3>Додати власну станцію</h3>
+                <h3>Add a custom station</h3>
                 <div class="custom-form">
-                    <input type="text" id="custom-name" placeholder="Назва радіостанції">
-                    <input type="text" id="custom-url" placeholder="URL потоку (http://... або https://...)">
-                    <input type="text" id="custom-genre" placeholder="Жанр (опціонально)">
+                    <input type="text" id="custom-name" placeholder="Station name">
+                    <input type="text" id="custom-url" placeholder="Stream URL (http://... or https://...)">
+                    <input type="text" id="custom-genre" placeholder="Genre (optional)">
                     <div class="custom-form-buttons">
-                        <button id="preview-btn" class="btn-secondary">Прослухати</button>
-                        <button id="add-custom-btn">Додати станцію</button>
+                        <button id="preview-btn" class="btn-secondary">Preview</button>
+                        <button id="add-custom-btn">Add station</button>
                     </div>
                 </div>
 
-                <h3>Мої збережені станції</h3>
+                <h3>My saved stations</h3>
                 <div id="custom-stations-list" class="stations-list">
-                    <div class="loading-hint">Власних станцій поки немає</div>
+                    <div class="loading-hint">No custom stations yet</div>
                 </div>
             </div>
 
             <div class="export-section">
-                <h3>Імпорт / Експорт</h3>
+                <h3>Import / Export</h3>
                 <div class="export-buttons">
-                    <button id="export-favorites-btn">Експортувати обрані</button>
-                    <button id="import-btn">Імпортувати станції</button>
+                    <button id="export-favorites-btn">Export favorites</button>
+                    <button id="import-btn">Import stations</button>
                     <input type="file" id="import-file" accept=".json,.m3u,.m3u8,.pls,.opml,.xml" style="display:none">
                 </div>
             </div>
         </div>
 
-        <!-- Вкладка Налаштування -->
+        <!-- Settings tab -->
         <div class="tab-content" id="tab-settings">
             <div class="settings-section">
-                <h3>Відображення</h3>
+                <h3>Display</h3>
                 <div class="setting-item flex-between">
-                    <label for="view-mode-select">Вигляд інтерфейсу</label>
+                    <label for="view-mode-select">Interface view</label>
                     <select id="view-mode-select" class="custom-select">
-                        <option value="narrow">Вузький</option>
-                        <option value="wide">Широкий</option>
+                        <option value="narrow">Narrow</option>
+                        <option value="wide">Wide</option>
                     </select>
                 </div>
                 <div class="setting-item">
                     <label class="checkbox-container">
                         <input type="checkbox" id="compact-mode">
                         <span class="checkmark"></span>
-                        Компактний режим плеєра
+                        Compact player mode
                     </label>
                 </div>
                 <div class="setting-item">
                     <label class="checkbox-container">
                         <input type="checkbox" id="visualizer-enabled" checked>
                         <span class="checkmark"></span>
-                        Аудіо-візуалізатор
+                        Audio visualizer
                     </label>
                 </div>
 
                 <div class="setting-item flex-between">
-                    <label for="visualizer-style">Режим візуалізації</label>
+                    <label for="visualizer-style">Visualization mode</label>
                     <select id="visualizer-style" class="custom-select">
-                        <option value="bars">Неонові смуги</option>
-                        <option value="peaks">Неонові піки</option>
-                        <option value="wave">Хвиля-осцилограф</option>
-                        <option value="circle">Круговий еквалайзер</option>
-                        <option value="mirror">Дзеркальний спектр</option>
-                        <option value="dance">Танцювальний пульс</option>
+                        <option value="bars">Neon bars</option>
+                        <option value="peaks">Neon peaks</option>
+                        <option value="wave">Oscilloscope wave</option>
+                        <option value="circle">Circular equalizer</option>
+                        <option value="mirror">Mirror spectrum</option>
+                        <option value="dance">Dance pulse</option>
                     </select>
                 </div>
 
                 <div class="setting-item flex-between">
-                    <label for="visualizer-sensitivity">Чутливість візуалізатора</label>
+                    <label for="visualizer-sensitivity">Visualizer sensitivity</label>
                     <input type="range" id="visualizer-sensitivity" min="0.5" max="2" step="0.1" value="1.0" class="custom-slider">
                 </div>
 
                 <div class="setting-item color-picker-item">
-                    <label for="visualizer-color">Колір еквалайзера</label>
+                    <label for="visualizer-color">Equalizer color</label>
                     <input type="color" id="visualizer-color" value="#ff5a36">
                 </div>
 
-                <h3>Таймер сну</h3>
+                <h3>Equalizer</h3>
+                <div class="setting-item">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="eq-enabled">
+                        <span class="checkmark"></span>
+                        Enable equalizer
+                    </label>
+                </div>
                 <div class="setting-item flex-between">
-                    <label for="sleep-timer-select">Зупинити відтворення через</label>
+                    <label for="eq-preset">Preset</label>
+                    <select id="eq-preset" class="custom-select">
+                        <option value="flat">Flat</option>
+                        <option value="bass">Bass boost</option>
+                        <option value="treble">Treble boost</option>
+                        <option value="vocal">Vocal</option>
+                        <option value="rock">Rock</option>
+                    </select>
+                </div>
+                <div class="eq-bands" id="eq-bands"></div>
+                <div class="setting-item">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="normalize-enabled">
+                        <span class="checkmark"></span>
+                        Volume normalization (compressor)
+                    </label>
+                </div>
+
+                <h3>Sleep timer</h3>
+                <div class="setting-item flex-between">
+                    <label for="sleep-timer-select">Stop playback after</label>
                     <select id="sleep-timer-select" class="custom-select">
-                        <option value="0">Вимкнено</option>
-                        <option value="15">15 хвилин</option>
-                        <option value="30">30 хвилин</option>
-                        <option value="45">45 хвилин</option>
-                        <option value="60">1 годину</option>
-                        <option value="90">1.5 години</option>
-                        <option value="120">2 години</option>
+                        <option value="0">Off</option>
+                        <option value="15">15 minutes</option>
+                        <option value="30">30 minutes</option>
+                        <option value="45">45 minutes</option>
+                        <option value="60">1 hour</option>
+                        <option value="90">1.5 hours</option>
+                        <option value="120">2 hours</option>
                     </select>
                 </div>
                 <div class="setting-item flex-between sleep-timer-status hidden" id="sleep-timer-status">
-                    <span>Залишилось</span>
+                    <span>Remaining</span>
                     <span id="sleep-timer-remaining">--:--</span>
                 </div>
 
-                <h3>Про програму</h3>
+                <h3>About</h3>
                 <p class="about-text">
                     <strong>Internet Radio Player <span id="about-version">v1.0.0</span></strong><br>
-                    Сучасний радіоплеєр з обходом CORS та підтримкою HTTPS метаданих.<br>
-                    Побудовано на Tauri v2 + Rust + HTML5 Audio.
+                    A modern radio player with CORS bypass and HTTPS metadata support.<br>
+                    Built with Tauri v2 + Rust + HTML5 Audio.
                 </p>
             </div>
         </div>
@@ -374,35 +400,35 @@
         <audio id="audio-player" crossorigin="anonymous"></audio>
     </div>
 
-    <!-- Модальне вікно для редагування власних станцій -->
+    <!-- Modal for editing custom stations -->
     <div id="edit-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Редагувати станцію</h3>
+                <h3>Edit station</h3>
                 <span class="close-modal-btn" id="close-modal-btn">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="custom-form">
                     <input type="hidden" id="edit-station-uuid">
                     <div class="form-group">
-                        <label for="edit-station-name">Назва</label>
-                        <input type="text" id="edit-station-name" placeholder="Назва радіостанції">
+                        <label for="edit-station-name">Name</label>
+                        <input type="text" id="edit-station-name" placeholder="Station name">
                     </div>
                     <div class="form-group">
-                        <label for="edit-station-url">URL потоку</label>
-                        <input type="text" id="edit-station-url" placeholder="URL потоку">
+                        <label for="edit-station-url">Stream URL</label>
+                        <input type="text" id="edit-station-url" placeholder="Stream URL">
                     </div>
                     <div class="form-group">
-                        <label for="edit-station-genre">Жанр</label>
-                        <input type="text" id="edit-station-genre" placeholder="Жанр (опціонально)">
+                        <label for="edit-station-genre">Genre</label>
+                        <input type="text" id="edit-station-genre" placeholder="Genre (optional)">
                     </div>
-                    <button id="save-edit-btn" class="save-edit-btn">Зберегти зміни</button>
+                    <button id="save-edit-btn" class="save-edit-btn">Save changes</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script src="hls.min.js"></script>
-    <script src="main.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 </html>
