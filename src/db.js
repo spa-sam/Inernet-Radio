@@ -163,32 +163,25 @@ export async function loadAllDataFromDb() {
             timestamp: row.timestamp
         }));
 
+        // Settings are stored as TEXT. Values written by saveSetting are either
+        // String(scalar) ("true", "0.5", "bars", "#ff5a36") or JSON for
+        // objects/arrays. Parse generically: JSON.parse recovers booleans,
+        // numbers, arrays and objects, while plain strings (e.g. a hex colour)
+        // fail to parse and are kept verbatim. New keys load automatically.
         const settingsRows = await db.select('SELECT * FROM settings');
         settingsRows.forEach(row => {
-            const s = result.settings;
-            if (row.key === 'compactMode') s.compactMode = row.value === 'true';
-            if (row.key === 'wideMode') s.wideMode = row.value === 'true';
-            if (row.key === 'visualizerEnabled') s.visualizerEnabled = row.value === 'true';
-            if (row.key === 'visualizerColor') s.visualizerColor = row.value;
-            if (row.key === 'visualizerStyle') s.visualizerStyle = row.value;
-            if (row.key === 'visualizerSensitivity') s.visualizerSensitivity = parseFloat(row.value);
-            if (row.key === 'eqEnabled') s.eqEnabled = row.value === 'true';
-            if (row.key === 'normalizeEnabled') s.normalizeEnabled = row.value === 'true';
-            if (row.key === 'recordSplit') s.recordSplit = row.value === 'true';
-            if (row.key === 'eqGains') {
-                try {
-                    const parsed = JSON.parse(row.value);
-                    if (Array.isArray(parsed) && parsed.length === EQ_BAND_COUNT) s.eqGains = parsed;
-                } catch (_) { /* keep caller's default */ }
-            }
-            if (row.key === 'favoritesOrder') {
-                try { s.favoritesOrder = JSON.parse(row.value) || []; } catch (_) { /* keep */ }
-            }
-            if (row.key === 'customOrder') {
-                try { s.customOrder = JSON.parse(row.value) || []; } catch (_) { /* keep */ }
-            }
+            let value = row.value;
+            try { value = JSON.parse(row.value); } catch (_) { /* keep raw string */ }
+
             if (row.key === 'lastStation') {
-                try { result.lastStation = row.value ? JSON.parse(row.value) : null; } catch (_) { /* keep */ }
+                result.lastStation = value && typeof value === 'object' ? value : null;
+            } else if (row.key === 'eqGains') {
+                // Guard against a malformed array breaking the equalizer UI.
+                if (Array.isArray(value) && value.length === EQ_BAND_COUNT) {
+                    result.settings.eqGains = value;
+                }
+            } else {
+                result.settings[row.key] = value;
             }
         });
     } catch (e) {
@@ -226,11 +219,26 @@ export function loadAllDataFromStorage() {
 }
 
 // ------------------------------------------------------------------
-// Write a single setting to both storage backends atomically.
-// The `db` live binding is read at call time, so this works whether
-// the DB was opened before or after this module was imported.
+// Persist a single setting. SQLite is the source of truth; when it is
+// open the value is written there only. localStorage is used solely as a
+// fallback when no database is available. The `db` live binding is read
+// at call time, so this works whether the DB was opened before or after
+// this module was imported.
 // ------------------------------------------------------------------
 export async function saveSetting(key, value) {
+    if (db) {
+        try {
+            await db.execute(
+                'INSERT OR REPLACE INTO settings (key, value) VALUES ($1, $2)',
+                [key, typeof value === 'object' ? JSON.stringify(value) : String(value)]
+            );
+        } catch (e) {
+            console.error('Save setting error:', e);
+        }
+        return;
+    }
+
+    // Fallback path: no database, mirror into localStorage.
     try {
         if (key === 'lastStation') {
             localStorage.setItem('lastStation', JSON.stringify(value));
@@ -242,27 +250,21 @@ export async function saveSetting(key, value) {
     } catch (e) {
         console.error('localStorage save error:', e);
     }
-
-    if (!db) return;
-    try {
-        await db.execute(
-            'INSERT OR REPLACE INTO settings (key, value) VALUES ($1, $2)',
-            [key, typeof value === 'object' ? JSON.stringify(value) : String(value)]
-        );
-    } catch (e) {
-        console.error('Save setting error:', e);
-    }
 }
 
 // ==================================================================
 // Repository layer.
 // All collection mutations are persisted here so callers never touch
-// localStorage or SQL directly. Each function writes the localStorage
-// snapshot (fallback path) and, when available, the SQLite row(s).
+// localStorage or SQL directly. SQLite is the single source of truth;
+// localStorage is written only as a fallback when no database is open
+// (e.g. running in a plain browser without the Tauri SQL plugin).
 // ==================================================================
 
-// Write a JSON snapshot of a collection to localStorage (fallback store).
+// Write a JSON snapshot of a collection to localStorage. No-op when a
+// database is open — SQLite then owns the data and a stale localStorage
+// mirror would only risk diverging.
 function writeLocal(key, value) {
+    if (db) return;
     try {
         localStorage.setItem(key, JSON.stringify(value));
     } catch (e) {

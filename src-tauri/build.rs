@@ -7,6 +7,7 @@ fn main() {
             "start_recording",
             "stop_recording",
             "is_recording",
+            "check_for_updates",
         ]),
     ))
     .unwrap();

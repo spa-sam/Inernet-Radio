@@ -76,4 +76,16 @@ export async function loadFilterOptions() {
     } catch (e) {
         console.warn('Could not load tag list:', e);
     }
+
+    try {
+        const languages = await apiFetch('/languages');
+        const names = languages
+            .filter((l) => l.name && l.stationcount > 0)
+            .sort((a, b) => b.stationcount - a.stationcount)
+            .slice(0, 150)
+            .map((l) => l.name);
+        fill('language-list', names);
+    } catch (e) {
+        console.warn('Could not load language list:', e);
+    }
 }

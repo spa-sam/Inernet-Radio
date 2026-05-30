@@ -215,6 +215,21 @@
                                         <option value="AAC">AAC / AAC+</option>
                                     </select>
                                 </div>
+                                <div class="filter-group">
+                                    <label for="filter-language">Language</label>
+                                    <input type="text" id="filter-language" list="language-list" placeholder="Any language" autocomplete="off">
+                                    <datalist id="language-list"></datalist>
+                                </div>
+                                <div class="filter-group">
+                                    <label for="filter-order">Sort by</label>
+                                    <select id="filter-order">
+                                        <option value="clickcount">Popularity</option>
+                                        <option value="votes">Most voted</option>
+                                        <option value="clicktrend">Trending</option>
+                                        <option value="bitrate">Bitrate</option>
+                                        <option value="name">Name (A–Z)</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
 
@@ -392,6 +407,23 @@
                     <span id="sleep-timer-remaining">--:--</span>
                 </div>
 
+                <h3>Alarm (wake to radio)</h3>
+                <div class="setting-item">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="alarm-enabled">
+                        <span class="checkmark"></span>
+                        Start playback at a set time (daily)
+                    </label>
+                </div>
+                <div class="setting-item flex-between">
+                    <label for="alarm-time">Alarm time</label>
+                    <input type="time" id="alarm-time" class="custom-select" value="07:00">
+                </div>
+                <div class="setting-item flex-between sleep-timer-status hidden" id="alarm-status">
+                    <span>Starts in</span>
+                    <span id="alarm-remaining">--:--:--</span>
+                </div>
+
                 <h3>Recording</h3>
                 <div class="setting-item">
                     <label class="checkbox-container">
@@ -407,6 +439,9 @@
                     A modern radio player with CORS bypass and HTTPS metadata support.<br>
                     Built with Tauri v2 + Rust + HTML5 Audio.
                 </p>
+                <div class="setting-item">
+                    <button id="check-updates-btn">Check for updates</button>
+                </div>
             </div>
         </div>
 

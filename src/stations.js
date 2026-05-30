@@ -41,11 +41,17 @@ export async function searchStations(query, tag = '', append = false) {
     const countryVal = dom.filterCountry.value;
     const bitrateVal = dom.filterBitrate.value;
     const codecVal = dom.filterCodec.value;
+    const languageVal = dom.filterLanguage ? dom.filterLanguage.value.trim() : '';
+    // Sort field maps directly to the Radio Browser `order` param. Everything
+    // except an A–Z name sort reads best in descending order.
+    const orderVal = dom.filterOrder ? dom.filterOrder.value : 'clickcount';
+    const reverse = orderVal !== 'name';
 
-    let path = `/stations/search?limit=${STATIONS_PAGE_SIZE}&offset=${state.searchPage.offset}&order=clickcount&reverse=true`;
+    let path = `/stations/search?limit=${STATIONS_PAGE_SIZE}&offset=${state.searchPage.offset}&order=${orderVal}&reverse=${reverse}`;
     if (query) path += `&name=${encodeURIComponent(query)}`;
     if (tagVal) path += `&tag=${encodeURIComponent(tagVal)}`;
     if (countryVal) path += `&country=${encodeURIComponent(countryVal)}`;
+    if (languageVal) path += `&language=${encodeURIComponent(languageVal)}`;
     if (bitrateVal && parseInt(bitrateVal) > 0) path += `&bitrateMin=${bitrateVal}`;
     if (codecVal) path += `&codec=${codecVal}`;
 

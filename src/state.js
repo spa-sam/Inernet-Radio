@@ -12,6 +12,8 @@ export const state = {
     liveTimerSeconds: 0,
     sleepTimerInterval: null,
     sleepTimerEnd: 0,
+    alarmInterval: null,
+    alarmTarget: 0,
 
     // Playback
     currentStation: null,
@@ -84,6 +86,8 @@ export const state = {
         eqGains: [0, 0, 0, 0, 0],
         normalizeEnabled: false,
         recordSplit: false,
+        alarmEnabled: false,
+        alarmTime: '07:00',
         favoritesOrder: [],
         customOrder: []
     }

@@ -5,7 +5,7 @@
 ## Рішення по обсягу
 
 - Історія треків — **залишається як є** (ручне додавання, навмисно).
-- Тести — **не пишемо**.
+- Тести — Rust-юніт-тести для чистих парсерів **додано** (раунд 2); рішення «не пишемо» переглянуто.
 - Мова інтерфейсу — **повністю англійська** (прибрати україномовні рядки UI).
 - Тема — **тільки поточна** (без світлої теми та кастомного акценту UI).
 - Гарячі клавіші — **тільки `Пробіл`** (плей/стоп). Прибрати `←/→`, `↑/↓`, `Ctrl+K`.
@@ -16,7 +16,7 @@
 
 - [x] Безпечне відкриття URL: замінити `cmd /C start` на безпечний механізм (`tauri-plugin-opener` або `ShellExecute`). `src-tauri/src/main.rs` `open_url`.
 - [x] TLS: лишити приймання невалідних сертифікатів, але додати лог/прапорець. `src-tauri/src/main.rs`.
-- [ ] Прибрати дубль persistence (localStorage ↔ SQLite): єдиний шар repository.
+- [x] Прибрати дубль persistence (localStorage ↔ SQLite): SQLite — єдине джерело істини, localStorage пише лише як фолбек коли БД недоступна (`writeLocal`/`saveSetting` у `db.js` no-op при відкритій БД). Лоадер налаштувань узагальнено (нові ключі підхоплюються автоматично).
 - [x] Живі ICY-метадані через проксі: метадані треку вирізаються прямо в потоці відтворення (`pipe_with_icy` у `main.rs`) і шлються подією `stream-metadata`. Прибрано опитування `get_stream_metadata` кожні 10 с (лишився один разовий запит при під'єднанні для миттєвого показу). Фронт слухає подію через `setupStreamMetadataListener` у `player.js`.
 
 ## 2. Нові аудіофункції
@@ -41,6 +41,21 @@
 - [x] CI (GitHub Actions): `cargo clippy`, `cargo fmt --check`, збірка під Windows.
 
 ---
+
+## Раунд 2 — доповнення
+
+- [x] **Юніт-тести Rust-парсерів** (`#[cfg(test)]` у `main.rs`): `parse_url`, `resolve_location`, `is_playlist`, `first_stream_url`, `parse_stream_title`, `parse_status_code`, `sanitize_filename`, `segment_path`.
+- [x] **Індикатор запису**: подія `recording-progress` (час + байти) → `REC mm:ss · X.X MB` у транспорт-панелі та tooltip кнопки.
+- [x] **Авторозбиття запису по треках**: чекбокс «Split recording per track»; `record_split` ріже файл при зміні `StreamTitle` (фолбек на один файл без ICY).
+- [x] **Виправлено дозволи запису**: `start/stop/is_recording` додані у `build.rs` і `capabilities/default.json` (раніше «command not found»).
+- [x] **Будильник (wake-to-radio)**: щоденний запуск відтворення о заданій годині (`ui.js`), persisted `alarmEnabled`/`alarmTime`.
+- [x] **Розширені фільтри пошуку**: мова (`/languages` + datalist) і сортування (`order`/`reverse`) додані до наявних country/tag/bitrate/codec.
+- [~] **Авто-оновлення (каркас)**: `tauri-plugin-updater` підключено, команда `check_for_updates` + кнопка в About. **Вимкнено за замовчуванням** через cargo-фічу `updater` (плагін панікує на старті без конфігу). Активація:
+  1. Згенерувати ключ: `npm run tauri signer generate -- -w ~/.tauri/internet-radio.key`
+  2. Додати у `tauri.conf.json` блок `plugins.updater` з `pubkey` (публічний ключ) і `endpoints` (URL до `latest.json`).
+  3. Увімкнути `bundle.createUpdaterArtifacts`; підписувати збірку через env `TAURI_SIGNING_PRIVATE_KEY`.
+  4. Збирати/запускати з фічею: `npm run tauri dev -- --features updater` (або `cargo build --features updater`).
+  5. Поки фіча вимкнена, `check_for_updates` повертає «Auto-updater is not enabled in this build», а збірка/запуск не ламаються.
 
 ## Порядок виконання
 
