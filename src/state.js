@@ -83,6 +83,7 @@ export const state = {
         eqEnabled: false,
         eqGains: [0, 0, 0, 0, 0],
         normalizeEnabled: false,
+        recordSplit: false,
         favoritesOrder: [],
         customOrder: []
     }

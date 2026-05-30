@@ -202,9 +202,12 @@ function stopMetadataPolling() {
     }
 }
 
-// Live track titles parsed out of the playback stream by the Rust proxy are
-// delivered here. Register once at startup. Events carry the originating stream
-// URL so titles from a connection the user has switched away from are ignored.
+// Register backend event listeners once at startup:
+//  - `stream-metadata`: live track titles parsed out of the playback stream by
+//    the Rust proxy. Events carry the originating stream URL so titles from a
+//    connection the user has switched away from are ignored.
+//  - `recording-progress`: elapsed time and bytes written for the active
+//    recording, used to drive the REC indicator.
 export async function setupStreamMetadataListener() {
     if (!hasTauriApi || !window.__TAURI__.event) return;
     try {
@@ -220,6 +223,16 @@ export async function setupStreamMetadataListener() {
             applyMarquee(dom.nowPlayingTrack);
             showSongNotification(state.currentStation.name, title);
             updateMediaSession(title);
+        });
+        await listen('recording-progress', (event) => {
+            if (!state.isRecording) return;
+            const { seconds = 0, bytes = 0 } = event.payload || {};
+            const mb = (bytes / (1024 * 1024)).toFixed(1);
+            const text = `REC ${formatTimer(seconds)} · ${mb} MB`;
+            // The detailed indicator lives in the wide-view transport panel;
+            // mirror it on the button title so narrow/mini views see it too.
+            if (dom.recStatusText) dom.recStatusText.textContent = text;
+            if (dom.recordBtn) dom.recordBtn.title = `Stop recording — ${text}`;
         });
     } catch (e) {
         console.error('Failed to set up metadata listener:', e);
@@ -678,9 +691,15 @@ async function startRecording() {
         if (!path) return;
 
         const url = state.currentStation.url_resolved || state.currentStation.url;
-        await invoke('start_recording', { url, path });
+        const split = !!state.settings.recordSplit;
+        await invoke('start_recording', { url, path, split });
         state.isRecording = true;
         updateRecordButton();
+        // Reveal the REC indicator; progress events keep its text updated.
+        if (dom.recStatus) {
+            if (dom.recStatusText) dom.recStatusText.textContent = 'REC 00:00:00 · 0.0 MB';
+            dom.recStatus.classList.remove('hidden');
+        }
         toast('Recording started', 'info');
     } catch (error) {
         console.error('Recording start error:', error);
@@ -697,6 +716,7 @@ async function stopRecording() {
     }
     state.isRecording = false;
     updateRecordButton();
+    if (dom.recStatus) dom.recStatus.classList.add('hidden');
     toast('Recording saved', 'info');
 }
 

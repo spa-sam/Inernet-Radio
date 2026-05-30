@@ -148,6 +148,10 @@
                                     <span id="live-timer">00:00:00</span>
                                 </div>
                                 <div class="transport-quality" id="transport-quality">—</div>
+                                <div class="transport-rec hidden" id="rec-status">
+                                    <span class="rec-dot"></span>
+                                    <span id="rec-status-text">REC 00:00:00 · 0.0 MB</span>
+                                </div>
                             </div>
 
                         </div>
@@ -386,6 +390,15 @@
                 <div class="setting-item flex-between sleep-timer-status hidden" id="sleep-timer-status">
                     <span>Remaining</span>
                     <span id="sleep-timer-remaining">--:--</span>
+                </div>
+
+                <h3>Recording</h3>
+                <div class="setting-item">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="record-split">
+                        <span class="checkmark"></span>
+                        Split recording into one file per track
+                    </label>
                 </div>
 
                 <h3>About</h3>

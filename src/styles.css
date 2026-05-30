@@ -620,6 +620,25 @@ body {
     color: var(--text-dim);
 }
 
+/* Live recording indicator (elapsed time + file size) */
+.transport-rec {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #e74c3c;
+}
+.transport-rec.hidden { display: none; }
+.transport-rec .rec-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #e74c3c;
+    animation: rec-pulse 1s ease-in-out infinite;
+}
+
 /* Volume ---------------------------------------------------------------- */
 /* Horizontal volume bar placed below the transport controls */
 .volume-bar {
