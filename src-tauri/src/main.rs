@@ -947,7 +947,12 @@ fn main() {
         // stays centered, visibility is left to the tray logic).
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                .with_state_flags(tauri_plugin_window_state::StateFlags::SIZE)
+                // Remember size, position and maximized state between sessions.
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
                 .build(),
         );
 
@@ -994,6 +999,10 @@ fn main() {
                         }
                     }
                     "quit" => {
+                        // Persist window size/position before exiting via the
+                        // tray, since app.exit bypasses the normal close flow.
+                        use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+                        let _ = app.save_window_state(StateFlags::all());
                         app.exit(0);
                     }
                     _ => {}
