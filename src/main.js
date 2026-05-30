@@ -27,6 +27,7 @@ import {
     previewCustomUrl,
     toggleRecording,
     setupMediaSession,
+    setupStreamMetadataListener,
     requestNotificationPermission,
     handleStreamDrop,
     setConnectionState
@@ -94,6 +95,9 @@ async function init() {
 
     // Load proxy port first
     await initProxy();
+
+    // Listen for live track metadata pushed from the proxy stream
+    setupStreamMetadataListener();
 
     // Refresh the Radio Browser mirror list, then populate filter suggestions
     loadApiServers().then(() => loadFilterOptions());

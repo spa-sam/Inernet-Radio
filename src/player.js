@@ -185,18 +185,13 @@ async function fetchStreamMetadata(url) {
     }
 }
 
+// Fetch the title once at connect for instant feedback. Subsequent updates
+// arrive via the proxy's `stream-metadata` events (see setupStreamMetadataListener),
+// so there is no longer a repeating poll opening its own connection.
 function startMetadataPolling() {
-    stopMetadataPolling();
-
     if (state.currentStation && hasTauriApi) {
         const streamUrl = state.currentStation.url_resolved || state.currentStation.url;
         fetchStreamMetadata(streamUrl);
-
-        state.metadataInterval = setInterval(() => {
-            if (state.isPlaying && state.currentStation) {
-                fetchStreamMetadata(streamUrl);
-            }
-        }, 10000);
     }
 }
 
@@ -204,6 +199,30 @@ function stopMetadataPolling() {
     if (state.metadataInterval) {
         clearInterval(state.metadataInterval);
         state.metadataInterval = null;
+    }
+}
+
+// Live track titles parsed out of the playback stream by the Rust proxy are
+// delivered here. Register once at startup. Events carry the originating stream
+// URL so titles from a connection the user has switched away from are ignored.
+export async function setupStreamMetadataListener() {
+    if (!hasTauriApi || !window.__TAURI__.event) return;
+    try {
+        const { listen } = window.__TAURI__.event;
+        await listen('stream-metadata', (event) => {
+            const payload = event.payload || {};
+            if (!state.isPlaying || !state.currentStation) return;
+            const current = state.currentStation.url_resolved || state.currentStation.url;
+            if (payload.url && current && payload.url !== current) return;
+            const title = (payload.title || '').trim();
+            if (!title) return;
+            dom.nowPlayingTrack.textContent = '♪ ' + title;
+            applyMarquee(dom.nowPlayingTrack);
+            showSongNotification(state.currentStation.name, title);
+            updateMediaSession(title);
+        });
+    } catch (e) {
+        console.error('Failed to set up metadata listener:', e);
     }
 }
 

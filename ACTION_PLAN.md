@@ -17,6 +17,7 @@
 - [x] Безпечне відкриття URL: замінити `cmd /C start` на безпечний механізм (`tauri-plugin-opener` або `ShellExecute`). `src-tauri/src/main.rs` `open_url`.
 - [x] TLS: лишити приймання невалідних сертифікатів, але додати лог/прапорець. `src-tauri/src/main.rs`.
 - [ ] Прибрати дубль persistence (localStorage ↔ SQLite): єдиний шар repository.
+- [x] Живі ICY-метадані через проксі: метадані треку вирізаються прямо в потоці відтворення (`pipe_with_icy` у `main.rs`) і шлються подією `stream-metadata`. Прибрано опитування `get_stream_metadata` кожні 10 с (лишився один разовий запит при під'єднанні для миттєвого показу). Фронт слухає подію через `setupStreamMetadataListener` у `player.js`.
 
 ## 2. Нові аудіофункції
 
