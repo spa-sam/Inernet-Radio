@@ -331,15 +331,22 @@ function applyAlarmFromUi() {
 if (dom.alarmEnabledCheckbox) dom.alarmEnabledCheckbox.addEventListener('change', applyAlarmFromUi);
 if (dom.alarmTime) dom.alarmTime.addEventListener('change', applyAlarmFromUi);
 
-// Auto-update UI: check -> Install button -> download with progress -> restart.
-// Requires the desktop app with plugins.updater configured.
-if (hasTauriApi && window.__TAURI__.event && dom.checkUpdatesBtn) {
+// Auto-update UI: a single button that walks through the states
+// Check for updates -> Install vX (with progress bar) -> Restart now.
+if (hasTauriApi && window.__TAURI__.event && dom.updateActionBtn) {
+    let updState = 'idle'; // idle | available | installed
+    let pendingVersion = '';
+
     const setUpdStatus = (text, kind = '') => {
         if (!dom.updateStatus) return;
         dom.updateStatus.textContent = text || '';
         dom.updateStatus.className = 'update-status' + (kind ? ' ' + kind : '');
     };
     const fmtMB = (b) => (b / (1024 * 1024)).toFixed(1);
+    const setBtn = (label, accent) => {
+        dom.updateActionBtn.textContent = label;
+        dom.updateActionBtn.classList.toggle('accent', !!accent);
+    };
 
     // Live download progress while install_update runs
     window.__TAURI__.event.listen('update-progress', (event) => {
@@ -349,64 +356,63 @@ if (hasTauriApi && window.__TAURI__.event && dom.checkUpdatesBtn) {
             const pct = total ? Math.min(100, Math.round((downloaded / total) * 100)) : 0;
             dom.updateProgressBar.style.width = pct + '%';
         }
-        const totalTxt = total ? ` / ${fmtMB(total)} MB` : '';
-        setUpdStatus(`Downloading ${fmtMB(downloaded)}${totalTxt}…`);
+        setUpdStatus(`Downloading ${fmtMB(downloaded)}${total ? ` / ${fmtMB(total)} MB` : ''}…`);
     });
 
-    // Step 1 — check (does not install)
-    dom.checkUpdatesBtn.addEventListener('click', async () => {
+    const doCheck = async () => {
         const { invoke } = window.__TAURI__.core;
-        dom.checkUpdatesBtn.disabled = true;
-        const orig = dom.checkUpdatesBtn.textContent;
-        dom.checkUpdatesBtn.textContent = 'Checking…';
+        dom.updateActionBtn.disabled = true;
+        setBtn('Checking…', false);
         try {
             const info = await invoke('check_for_updates');
             if (info && info.available) {
+                pendingVersion = info.version;
+                updState = 'available';
+                setBtn(`Install v${info.version}`, true);
                 setUpdStatus(`Update available: v${info.version} (current v${info.current_version})`, 'ok');
-                if (dom.installUpdateBtn) {
-                    dom.installUpdateBtn.textContent = `Install v${info.version}`;
-                    dom.installUpdateBtn.classList.remove('hidden');
-                }
-                dom.checkUpdatesBtn.classList.add('hidden');
             } else {
+                updState = 'idle';
+                setBtn('Check for updates', false);
                 setUpdStatus(`You are on the latest version (v${info ? info.current_version : ''})`, 'ok');
             }
         } catch (e) {
+            updState = 'idle';
+            setBtn('Check for updates', false);
             setUpdStatus('Update check failed: ' + (e && e.message ? e.message : e), 'error');
         } finally {
-            dom.checkUpdatesBtn.disabled = false;
-            dom.checkUpdatesBtn.textContent = orig;
+            dom.updateActionBtn.disabled = false;
         }
+    };
+
+    const doInstall = async () => {
+        const { invoke } = window.__TAURI__.core;
+        dom.updateActionBtn.disabled = true;
+        setBtn('Installing…', true);
+        setUpdStatus('Starting download…');
+        if (dom.updateProgressWrap) dom.updateProgressWrap.classList.remove('hidden');
+        if (dom.updateProgressBar) dom.updateProgressBar.style.width = '0%';
+        try {
+            await invoke('install_update');
+            if (dom.updateProgressBar) dom.updateProgressBar.style.width = '100%';
+            updState = 'installed';
+            setBtn('Restart now', true);
+            setUpdStatus(`v${pendingVersion} installed. Restart to apply.`, 'ok');
+        } catch (e) {
+            updState = 'available';
+            setBtn(`Install v${pendingVersion}`, true);
+            setUpdStatus('Install failed: ' + (e && e.message ? e.message : e), 'error');
+        } finally {
+            dom.updateActionBtn.disabled = false;
+        }
+    };
+
+    dom.updateActionBtn.addEventListener('click', () => {
+        if (updState === 'idle') doCheck();
+        else if (updState === 'available') doInstall();
+        else if (updState === 'installed') window.__TAURI__.core.invoke('restart_app');
     });
-
-    // Step 2 — download + install (progress via update-progress events)
-    if (dom.installUpdateBtn) {
-        dom.installUpdateBtn.addEventListener('click', async () => {
-            const { invoke } = window.__TAURI__.core;
-            dom.installUpdateBtn.disabled = true;
-            setUpdStatus('Starting download…');
-            if (dom.updateProgressWrap) dom.updateProgressWrap.classList.remove('hidden');
-            try {
-                await invoke('install_update');
-                if (dom.updateProgressBar) dom.updateProgressBar.style.width = '100%';
-                setUpdStatus('Update installed. Restart to apply.', 'ok');
-                dom.installUpdateBtn.classList.add('hidden');
-                if (dom.restartAppBtn) dom.restartAppBtn.classList.remove('hidden');
-            } catch (e) {
-                setUpdStatus('Install failed: ' + (e && e.message ? e.message : e), 'error');
-                dom.installUpdateBtn.disabled = false;
-            }
-        });
-    }
-
-    // Step 3 — restart to apply
-    if (dom.restartAppBtn) {
-        dom.restartAppBtn.addEventListener('click', () => {
-            window.__TAURI__.core.invoke('restart_app');
-        });
-    }
-} else if (dom.checkUpdatesBtn) {
-    dom.checkUpdatesBtn.addEventListener('click', () => {
+} else if (dom.updateActionBtn) {
+    dom.updateActionBtn.addEventListener('click', () => {
         toast('Updates are available in the desktop app only', 'error');
     });
 }

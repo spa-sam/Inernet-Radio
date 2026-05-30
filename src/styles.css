@@ -1170,7 +1170,9 @@ body {
 }
 
 /* Check-for-updates button (About section) */
-#check-updates-btn {
+/* Update panel: single action button + status + progress bar */
+.update-panel { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+#update-action-btn {
     padding: 0.55rem 0.9rem;
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
@@ -1181,40 +1183,27 @@ body {
     cursor: pointer;
     transition: var(--transition);
 }
-#check-updates-btn:hover {
+#update-action-btn:hover {
     background: var(--surface-3);
     color: var(--text);
     border-color: var(--accent);
 }
-#check-updates-btn:disabled {
-    opacity: 0.6;
-    cursor: default;
-    border-color: var(--line);
-}
-
-/* Update panel: check / install / restart + progress bar */
-.update-panel { display: flex; flex-direction: column; gap: 0.5rem; }
-.update-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-#install-update-btn,
-#restart-app-btn {
-    padding: 0.55rem 0.9rem;
-    border: 1px solid var(--accent);
-    border-radius: var(--radius-md);
+#update-action-btn:disabled { opacity: 0.6; cursor: default; }
+/* Emphasised state for the Install / Restart actions */
+#update-action-btn.accent {
+    border-color: var(--accent);
     background: var(--accent-soft);
     color: var(--accent);
-    font-size: 0.8rem;
     font-weight: 700;
-    cursor: pointer;
-    transition: var(--transition);
 }
-#install-update-btn:hover,
-#restart-app-btn:hover { background: var(--accent); color: #fff; }
-#install-update-btn:disabled { opacity: 0.6; cursor: default; }
+#update-action-btn.accent:hover { background: var(--accent); color: #fff; }
 .update-status { font-size: 0.75rem; color: var(--text-muted); }
 .update-status:empty { display: none; }
 .update-status.ok { color: var(--accent); }
 .update-status.error { color: #e74c3c; }
 .update-progress-wrap {
+    width: 100%;
+    max-width: 360px;
     height: 8px;
     background: var(--surface-3);
     border-radius: 4px;
