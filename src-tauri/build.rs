@@ -8,6 +8,8 @@ fn main() {
             "stop_recording",
             "is_recording",
             "check_for_updates",
+            "install_update",
+            "restart_app",
         ]),
     ))
     .unwrap();
