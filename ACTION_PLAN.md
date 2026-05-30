@@ -50,12 +50,11 @@
 - [x] **Виправлено дозволи запису**: `start/stop/is_recording` додані у `build.rs` і `capabilities/default.json` (раніше «command not found»).
 - [x] **Будильник (wake-to-radio)**: щоденний запуск відтворення о заданій годині (`ui.js`), persisted `alarmEnabled`/`alarmTime`.
 - [x] **Розширені фільтри пошуку**: мова (`/languages` + datalist) і сортування (`order`/`reverse`) додані до наявних country/tag/bitrate/codec.
-- [~] **Авто-оновлення (каркас)**: `tauri-plugin-updater` підключено, команда `check_for_updates` + кнопка в About. **Вимкнено за замовчуванням** через cargo-фічу `updater` (плагін панікує на старті без конфігу). Активація:
-  1. Згенерувати ключ: `npm run tauri signer generate -- -w ~/.tauri/internet-radio.key`
-  2. Додати у `tauri.conf.json` блок `plugins.updater` з `pubkey` (публічний ключ) і `endpoints` (URL до `latest.json`).
-  3. Увімкнути `bundle.createUpdaterArtifacts`; підписувати збірку через env `TAURI_SIGNING_PRIVATE_KEY`.
-  4. Збирати/запускати з фічею: `npm run tauri dev -- --features updater` (або `cargo build --features updater`).
-  5. Поки фіча вимкнена, `check_for_updates` повертає «Auto-updater is not enabled in this build», а збірка/запуск не ламаються.
+- [x] **Авто-оновлення через GitHub Releases**: `tauri-plugin-updater` зареєстровано на desktop; команда `check_for_updates` + кнопка в About. Конфіг у `tauri.conf.json` → `plugins.updater` (endpoint `https://github.com/spa-sam/Inernet-Radio/releases/latest/download/latest.json` + `pubkey`), `bundle.createUpdaterArtifacts: true`. Реліз публікує workflow `.github/workflows/release.yml` (`tauri-action`) на push тегу `v*`.
+  - Ключ підпису: `~/.tauri/internet-radio.key` (приватний — поза репо), публічний — у конфізі.
+  - Секрети GitHub: `TAURI_SIGNING_PRIVATE_KEY` (вміст файлу ключа), `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+  - Випуск нової версії: підняти `version` у `tauri.conf.json` + `package.json`, потім `git tag vX.Y.Z && git push origin vX.Y.Z`.
+  - Локальний `npm run tauri build` тепер потребує env `TAURI_SIGNING_PRIVATE_KEY` (через `createUpdaterArtifacts`).
 
 ## Порядок виконання
 
