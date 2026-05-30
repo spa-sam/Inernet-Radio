@@ -55,6 +55,8 @@
   - Секрети GitHub: `TAURI_SIGNING_PRIVATE_KEY` (вміст файлу ключа), `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
   - Випуск нової версії: підняти `version` у `tauri.conf.json` + `package.json`, потім `git tag vX.Y.Z && git push origin vX.Y.Z`.
   - Локальний `npm run tauri build` тепер потребує env `TAURI_SIGNING_PRIVATE_KEY` (через `createUpdaterArtifacts`).
+- [x] **macOS у релізі**: `release.yml` розширено в matrix `windows-latest` + `macos-latest` (`--target universal-apple-darwin`); `bundle.targets: "all"`. Обидві платформи кладуться в один реліз, `latest.json` обʼєднує цілі.
+  - Apple-нотаризація поки **не налаштована** → macOS Gatekeeper попереджатиме при першому запуску (правою → Open). Додамо за наявності Apple Developer ID (`APPLE_CERTIFICATE`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`).
 
 ## Порядок виконання
 
