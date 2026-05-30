@@ -907,9 +907,8 @@ fn open_url(app: tauri::AppHandle, url: String) {
     let _ = app.opener().open_url(url, None::<&str>);
 }
 
-// Check for and install an application update. Compiled only when the
-// `updater` feature is enabled (desktop), which also registers the plugin.
-#[cfg(all(desktop, feature = "updater"))]
+// Check for and install an application update (desktop only).
+#[cfg(desktop)]
 #[tauri::command]
 async fn check_for_updates(app: tauri::AppHandle) -> Result<String, String> {
     use tauri_plugin_updater::UpdaterExt;
@@ -930,12 +929,11 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<String, String> {
     }
 }
 
-// Stub used when the updater feature is off (default) or on mobile, so the
-// frontend command always exists but reports the updater is unavailable.
-#[cfg(not(all(desktop, feature = "updater")))]
+// Mobile builds do not ship the updater plugin.
+#[cfg(not(desktop))]
 #[tauri::command]
 async fn check_for_updates() -> Result<String, String> {
-    Err("Auto-updater is not enabled in this build".to_string())
+    Err("Updates are available in the desktop app only".to_string())
 }
 
 fn main() {
@@ -953,10 +951,9 @@ fn main() {
                 .build(),
         );
 
-    // The updater plugin is desktop-only and opt-in via the `updater` feature.
-    // It panics on startup unless plugins.updater is configured, so it stays
-    // out of default builds.
-    #[cfg(all(desktop, feature = "updater"))]
+    // The updater plugin is desktop-only. It reads plugins.updater from
+    // tauri.conf.json (endpoints + pubkey), which is configured.
+    #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }

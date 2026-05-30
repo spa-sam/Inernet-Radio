@@ -48,5 +48,3 @@ jobs:
           releaseName: 'Internet Radio ${{ github.ref_name }}'
           releaseDraft: true
           prerelease: false
-          # Compile in the updater plugin for release builds only.
-          args: --features updater

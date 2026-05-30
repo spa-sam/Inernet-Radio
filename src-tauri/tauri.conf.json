@@ -27,6 +27,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,5 +35,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/spa-sam/Inernet-Radio/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk5NDg3MEU3NzI4M0NFOEUKUldTT3pvTnk1M0JJbWErdjlIZlo5aENOU0lIRFU1R1lmVFB4NmtwWkNwNzBzNHdwZ0RwSGx2TTMK"
+    }
   }
 }
