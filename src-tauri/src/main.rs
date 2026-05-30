@@ -8,7 +8,7 @@ use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -20,6 +20,15 @@ struct StreamMetadata {
     genre: Option<String>,
     bitrate: Option<String>,
     name: Option<String>,
+}
+
+// Live track metadata pushed to the frontend as it is parsed out of the
+// playback stream. `url` is the original (pre-redirect) stream URL so the
+// frontend can ignore stale events from a connection it has switched away from.
+#[derive(Serialize, Clone)]
+struct LiveMetadata {
+    url: String,
+    title: String,
 }
 
 struct ProxyPort(u16);
@@ -36,8 +45,8 @@ struct RecordingState {
 // flag is set or the stream ends. Reuses the proxy's stream resolver so
 // redirects and playlists are followed and no ICY metadata is interleaved.
 async fn record_stream(url: String, path: String, stop: Arc<AtomicBool>) {
-    match open_audio_stream(&url, 0, false).await {
-        Ok((mut reader, _content_type)) => {
+    match open_audio_stream(&url, 0, false, false).await {
+        Ok((mut reader, _content_type, _metaint)) => {
             let mut file = match tokio::fs::File::create(&path).await {
                 Ok(f) => f,
                 Err(e) => {
@@ -52,14 +61,14 @@ async fn record_stream(url: String, path: String, stop: Arc<AtomicBool>) {
                     break;
                 }
                 match timeout(Duration::from_secs(15), reader.read(&mut buf)).await {
-                    Ok(Ok(0)) => break,                      // stream ended
+                    Ok(Ok(0)) => break, // stream ended
                     Ok(Ok(n)) => {
                         if file.write_all(&buf[..n]).await.is_err() {
                             break;
                         }
                     }
-                    Ok(Err(_)) => break,                     // read error
-                    Err(_) => break,                         // stalled stream
+                    Ok(Err(_)) => break, // read error
+                    Err(_) => break,     // stalled stream
                 }
             }
             let _ = file.flush().await;
@@ -102,17 +111,21 @@ fn is_recording(state: tauri::State<'_, RecordingState>) -> bool {
     state
         .stop
         .lock()
-        .map(|g| g.as_ref().map(|f| !f.load(Ordering::Relaxed)).unwrap_or(false))
+        .map(|g| {
+            g.as_ref()
+                .map(|f| !f.load(Ordering::Relaxed))
+                .unwrap_or(false)
+        })
         .unwrap_or(false)
 }
 
 // Parse URL into host, port, path, and is_ssl
 fn parse_url(url: &str) -> Option<(String, u16, String, bool)> {
     let url = url.trim();
-    let (rest, is_ssl) = if url.starts_with("https://") {
-        (&url[8..], true)
-    } else if url.starts_with("http://") {
-        (&url[7..], false)
+    let (rest, is_ssl) = if let Some(stripped) = url.strip_prefix("https://") {
+        (stripped, true)
+    } else if let Some(stripped) = url.strip_prefix("http://") {
+        (stripped, false)
     } else {
         (url, false)
     };
@@ -136,7 +149,11 @@ fn parse_url(url: &str) -> Option<(String, u16, String, bool)> {
 }
 
 // Read ICY metadata from a generic stream (HTTP or HTTPS)
-async fn read_icy_metadata_from_stream<S>(stream: S, path: &str, host: &str) -> Option<StreamMetadata>
+async fn read_icy_metadata_from_stream<S>(
+    stream: S,
+    path: &str,
+    host: &str,
+) -> Option<StreamMetadata>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
@@ -392,12 +409,18 @@ fn first_stream_url(body: &str) -> Option<String> {
 }
 
 // Open an audio stream, following HTTP redirects and resolving playlists.
-// Returns the reader positioned at the audio body and the resolved Content-Type.
+// Returns the reader positioned at the audio body, the resolved Content-Type,
+// and the ICY metadata interval (bytes of audio between metadata blocks) when
+// `want_meta` is set and the server supports it.
 async fn open_audio_stream(
     url: &str,
     hops: u8,
     raw: bool,
-) -> Result<(BufReader<Box<dyn AsyncStream>>, String), Box<dyn std::error::Error + Send + Sync>> {
+    want_meta: bool,
+) -> Result<
+    (BufReader<Box<dyn AsyncStream>>, String, Option<usize>),
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     if hops >= 5 {
         return Err("too many redirects".into());
     }
@@ -425,29 +448,42 @@ async fn open_audio_stream(
         Box::new(tcp)
     };
 
-    // Request a clean audio stream. We must NOT ask for ICY metadata here:
-    // interleaved metadata blocks would corrupt playback because the <audio>
-    // element receives no icy-metaint header and cannot strip them out.
-    let request = format!(
-        "GET {} HTTP/1.0\r\n\
-         Host: {}\r\n\
-         User-Agent: Mozilla/5.0 TauriRadio/1.0\r\n\
-         Connection: close\r\n\
-         \r\n",
-        path, host
-    );
+    // Optionally ask for ICY metadata. When requested, the interleaved metadata
+    // blocks are stripped back out by pipe_with_icy before the bytes reach the
+    // <audio> element, so playback stays clean while we read the track title.
+    let request = if want_meta {
+        format!(
+            "GET {} HTTP/1.0\r\n\
+             Host: {}\r\n\
+             User-Agent: Mozilla/5.0 TauriRadio/1.0\r\n\
+             Icy-MetaData: 1\r\n\
+             Connection: close\r\n\
+             \r\n",
+            path, host
+        )
+    } else {
+        format!(
+            "GET {} HTTP/1.0\r\n\
+             Host: {}\r\n\
+             User-Agent: Mozilla/5.0 TauriRadio/1.0\r\n\
+             Connection: close\r\n\
+             \r\n",
+            path, host
+        )
+    };
     stream.write_all(request.as_bytes()).await?;
 
     let mut reader = BufReader::new(stream);
 
     // Read the status line and headers, bounded by a timeout
-    let (status, content_type, location) = timeout(Duration::from_secs(8), async {
+    let (status, content_type, location, metaint) = timeout(Duration::from_secs(8), async {
         let mut status_line = String::new();
         reader.read_line(&mut status_line).await?;
         let status = parse_status_code(&status_line);
 
         let mut content_type = String::new();
         let mut location = String::new();
+        let mut metaint: Option<usize> = None;
         loop {
             let mut line = String::new();
             if reader.read_line(&mut line).await? == 0 {
@@ -463,11 +499,12 @@ async fn open_audio_stream(
                 match name.as_str() {
                     "content-type" => content_type = value.to_string(),
                     "location" => location = value.to_string(),
+                    "icy-metaint" => metaint = value.parse().ok(),
                     _ => {}
                 }
             }
         }
-        Ok::<_, std::io::Error>((status, content_type, location))
+        Ok::<_, std::io::Error>((status, content_type, location, metaint))
     })
     .await
     .map_err(|_| "timeout reading response headers")??;
@@ -475,7 +512,7 @@ async fn open_audio_stream(
     // Follow HTTP redirects
     if (300..400).contains(&status) && !location.is_empty() {
         let next = resolve_location(url, &location);
-        return Box::pin(open_audio_stream(&next, hops + 1, raw)).await;
+        return Box::pin(open_audio_stream(&next, hops + 1, raw, want_meta)).await;
     }
 
     // Resolve .pls / .m3u playlists to the underlying stream URL.
@@ -491,9 +528,8 @@ async fn open_audio_stream(
         .map_err(|_| "timeout reading playlist")??;
 
         let body_text = String::from_utf8_lossy(&body);
-        let stream_url =
-            first_stream_url(&body_text).ok_or("playlist has no stream url")?;
-        return Box::pin(open_audio_stream(&stream_url, hops + 1, raw)).await;
+        let stream_url = first_stream_url(&body_text).ok_or("playlist has no stream url")?;
+        return Box::pin(open_audio_stream(&stream_url, hops + 1, raw, want_meta)).await;
     }
 
     let content_type = if content_type.is_empty() {
@@ -501,19 +537,81 @@ async fn open_audio_stream(
     } else {
         content_type
     };
-    Ok((reader, content_type))
+    Ok((reader, content_type, metaint))
+}
+
+// Copy an ICY stream to the client while stripping the interleaved metadata
+// blocks and emitting the parsed track title to the frontend. Audio bytes are
+// forwarded verbatim; only the metadata segments (one length byte + payload
+// every `metaint` bytes) are consumed here so the <audio> element sees clean
+// audio. Returns when the stream ends or the client disconnects.
+async fn pipe_with_icy<R, W>(
+    mut reader: R,
+    mut writer: W,
+    metaint: usize,
+    app: tauri::AppHandle,
+    url: String,
+) -> std::io::Result<()>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    let mut buf = vec![0u8; 16384];
+    let mut until_meta = metaint;
+    let mut last_title = String::new();
+    loop {
+        if until_meta > 0 {
+            // Forward audio up to the next metadata boundary.
+            let to_read = buf.len().min(until_meta);
+            let n = reader.read(&mut buf[..to_read]).await?;
+            if n == 0 {
+                break; // stream ended
+            }
+            writer.write_all(&buf[..n]).await?;
+            until_meta -= n;
+        } else {
+            // Metadata block: one length byte (in 16-byte units) + payload.
+            let mut len_byte = [0u8; 1];
+            reader.read_exact(&mut len_byte).await?;
+            let meta_len = (len_byte[0] as usize) * 16;
+            if meta_len > 0 {
+                let mut meta_buf = vec![0u8; meta_len];
+                reader.read_exact(&mut meta_buf).await?;
+                let meta_str = String::from_utf8_lossy(&meta_buf);
+                if let Some(title) = parse_stream_title(&meta_str) {
+                    if title != last_title {
+                        last_title = title.clone();
+                        let _ = app.emit(
+                            "stream-metadata",
+                            LiveMetadata {
+                                url: url.clone(),
+                                title,
+                            },
+                        );
+                    }
+                }
+            }
+            until_meta = metaint;
+        }
+    }
+    Ok(())
 }
 
 // Local CORS audio-proxy handler
 async fn handle_proxy_client(
     mut client_stream: TcpStream,
+    app: tauri::AppHandle,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Read only the request line from the audio client
     let mut request_line = String::new();
     {
         let mut reader = BufReader::new(&mut client_stream);
         if let Err(e) = reader.read_line(&mut request_line).await {
-            return if is_disconnect(&e) { Ok(()) } else { Err(e.into()) };
+            return if is_disconnect(&e) {
+                Ok(())
+            } else {
+                Err(e.into())
+            };
         }
     }
 
@@ -541,15 +639,38 @@ async fn handle_proxy_client(
         .decode_utf8_lossy()
         .into_owned();
 
-    match open_audio_stream(&target_url, 0, raw).await {
-        Ok((mut remote_reader, content_type)) => {
+    // Request ICY metadata for normal playback (not raw HLS) so the track
+    // title can be parsed out of the live stream and pushed to the frontend.
+    match open_audio_stream(&target_url, 0, raw, !raw).await {
+        Ok((mut remote_reader, content_type, metaint)) => {
             if let Err(e) = write_proxy_headers(&mut client_stream, &content_type).await {
-                return if is_disconnect(&e) { Ok(()) } else { Err(e.into()) };
+                return if is_disconnect(&e) {
+                    Ok(())
+                } else {
+                    Err(e.into())
+                };
             }
             let (_, mut client_write_half) = tokio::io::split(client_stream);
             // A client disconnect (e.g. switching stations) aborts the copy —
             // that is normal stream termination, not an error worth reporting.
-            if let Err(e) = tokio::io::copy(&mut remote_reader, &mut client_write_half).await {
+            let result = match metaint {
+                // ICY-aware copy: strip metadata blocks and emit track titles.
+                Some(mi) if mi > 0 => {
+                    pipe_with_icy(
+                        remote_reader,
+                        client_write_half,
+                        mi,
+                        app,
+                        target_url.clone(),
+                    )
+                    .await
+                }
+                // No metadata: forward the stream verbatim.
+                _ => tokio::io::copy(&mut remote_reader, &mut client_write_half)
+                    .await
+                    .map(|_| ()),
+            };
+            if let Err(e) = result {
                 if !is_disconnect(&e) {
                     return Err(e.into());
                 }
@@ -566,15 +687,16 @@ async fn handle_proxy_client(
     Ok(())
 }
 
-async fn start_proxy_server() -> Option<u16> {
+async fn start_proxy_server(app: tauri::AppHandle) -> Option<u16> {
     let listener = TcpListener::bind("127.0.0.1:0").await.ok()?;
     let port = listener.local_addr().ok()?.port();
 
     tokio::spawn(async move {
         loop {
             if let Ok((client_stream, _)) = listener.accept().await {
+                let app = app.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = handle_proxy_client(client_stream).await {
+                    if let Err(e) = handle_proxy_client(client_stream, app).await {
                         eprintln!("Proxy client handle error: {:?}", e);
                     }
                 });
@@ -632,8 +754,9 @@ fn main() {
             is_recording
         ])
         .setup(|app| {
+            let app_handle = app.handle().clone();
             let port = tauri::async_runtime::block_on(async {
-                start_proxy_server().await.unwrap_or(0)
+                start_proxy_server(app_handle).await.unwrap_or(0)
             });
             app.manage(ProxyPort(port));
 
