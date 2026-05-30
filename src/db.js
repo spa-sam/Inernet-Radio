@@ -174,6 +174,7 @@ export async function loadAllDataFromDb() {
             if (row.key === 'visualizerSensitivity') s.visualizerSensitivity = parseFloat(row.value);
             if (row.key === 'eqEnabled') s.eqEnabled = row.value === 'true';
             if (row.key === 'normalizeEnabled') s.normalizeEnabled = row.value === 'true';
+            if (row.key === 'recordSplit') s.recordSplit = row.value === 'true';
             if (row.key === 'eqGains') {
                 try {
                     const parsed = JSON.parse(row.value);

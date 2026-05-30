@@ -120,6 +120,7 @@ async function init() {
     dom.viewModeSelect.value = state.settings.wideMode ? 'wide' : 'narrow';
     buildEqUi();
     if (dom.normalizeCheckbox) dom.normalizeCheckbox.checked = state.settings.normalizeEnabled;
+    if (dom.recordSplitCheckbox) dom.recordSplitCheckbox.checked = state.settings.recordSplit;
 
     // Apply narrow / wide layout
     applyViewMode(state.settings.wideMode, true);
@@ -333,6 +334,10 @@ dom.visualizerColorPicker.addEventListener('input', changeVisualizerColor);
 dom.eqEnabledCheckbox.addEventListener('change', toggleEq);
 dom.eqPresetSelect.addEventListener('change', applyEqPreset);
 if (dom.normalizeCheckbox) dom.normalizeCheckbox.addEventListener('change', toggleNormalization);
+if (dom.recordSplitCheckbox) dom.recordSplitCheckbox.addEventListener('change', () => {
+    state.settings.recordSplit = dom.recordSplitCheckbox.checked;
+    saveSetting('recordSplit', state.settings.recordSplit);
+});
 if (dom.recordBtn) dom.recordBtn.addEventListener('click', toggleRecording);
 dom.visualizerCanvas.addEventListener('click', cycleVisualizerStyle);
 dom.enterCompactBtn.addEventListener('click', enterCompactMode);

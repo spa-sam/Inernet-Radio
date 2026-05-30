@@ -31,6 +31,14 @@ struct LiveMetadata {
     title: String,
 }
 
+// Recording progress pushed to the frontend roughly once per second so the UI
+// can show elapsed time and the growing file size.
+#[derive(Serialize, Clone)]
+struct RecordingProgress {
+    seconds: u64,
+    bytes: u64,
+}
+
 struct ProxyPort(u16);
 
 // Tracks the currently active recording. The stop flag is shared with the
@@ -41,49 +49,217 @@ struct RecordingState {
     stop: Mutex<Option<Arc<AtomicBool>>>,
 }
 
+// Replace characters that are invalid in file names (Windows-safe) and clamp
+// the length so a long track title cannot produce an unusable path.
+fn sanitize_filename(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim().trim_matches('.').trim();
+    if trimmed.is_empty() {
+        "track".to_string()
+    } else {
+        trimmed.chars().take(120).collect()
+    }
+}
+
+// Build the path for one recording segment, derived from the base path the user
+// chose. The first (pre-metadata) segment has no title. Example:
+//   base "C:\rec\Jazz.mp3", index 2, title "Artist - Song"
+//   -> "C:\rec\Jazz - 02 - Artist - Song.mp3"
+fn segment_path(base: &std::path::Path, index: usize, title: Option<&str>) -> std::path::PathBuf {
+    let dir = base.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("rec");
+    let ext = base.extension().and_then(|s| s.to_str()).unwrap_or("mp3");
+    let name = match title {
+        Some(t) => format!("{} - {:02} - {}.{}", stem, index, sanitize_filename(t), ext),
+        None => format!("{} - {:02}.{}", stem, index, ext),
+    };
+    dir.join(name)
+}
+
 // Connect to a stream and write its raw audio bytes to `path` until the stop
 // flag is set or the stream ends. Reuses the proxy's stream resolver so
-// redirects and playlists are followed and no ICY metadata is interleaved.
-async fn record_stream(url: String, path: String, stop: Arc<AtomicBool>) {
-    match open_audio_stream(&url, 0, false, false).await {
-        Ok((mut reader, _content_type, _metaint)) => {
-            let mut file = match tokio::fs::File::create(&path).await {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!("[rec] cannot create file {}: {:?}", path, e);
-                    stop.store(true, Ordering::Relaxed);
-                    return;
-                }
-            };
-            let mut buf = vec![0u8; 16384];
-            loop {
-                if stop.load(Ordering::Relaxed) {
-                    break;
-                }
-                match timeout(Duration::from_secs(15), reader.read(&mut buf)).await {
-                    Ok(Ok(0)) => break, // stream ended
-                    Ok(Ok(n)) => {
-                        if file.write_all(&buf[..n]).await.is_err() {
-                            break;
-                        }
-                    }
-                    Ok(Err(_)) => break, // read error
-                    Err(_) => break,     // stalled stream
-                }
-            }
-            let _ = file.flush().await;
-        }
+// redirects and playlists are followed. When `split` is set and the server
+// provides ICY metadata, the recording is cut into one file per track.
+async fn record_stream(
+    app: tauri::AppHandle,
+    url: String,
+    path: String,
+    stop: Arc<AtomicBool>,
+    split: bool,
+) {
+    match open_audio_stream(&url, 0, false, split).await {
+        Ok((reader, _content_type, metaint)) => match (split, metaint) {
+            (true, Some(mi)) if mi > 0 => record_split(&app, reader, mi, &path, &stop).await,
+            // No ICY metadata available: fall back to a single continuous file.
+            _ => record_single(&app, reader, &path, &stop).await,
+        },
         Err(e) => eprintln!("[rec] open error for {}: {:?}", url, e),
     }
     // Mark the recording as finished so is_recording() reports false.
     stop.store(true, Ordering::Relaxed);
 }
 
+// Record the stream verbatim into a single file, emitting progress events.
+async fn record_single(
+    app: &tauri::AppHandle,
+    mut reader: BufReader<Box<dyn AsyncStream>>,
+    path: &str,
+    stop: &Arc<AtomicBool>,
+) {
+    let mut file = match tokio::fs::File::create(path).await {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("[rec] cannot create file {}: {:?}", path, e);
+            return;
+        }
+    };
+    let mut buf = vec![0u8; 16384];
+    let started = std::time::Instant::now();
+    let mut total: u64 = 0;
+    let mut last_sec = u64::MAX;
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
+        match timeout(Duration::from_secs(15), reader.read(&mut buf)).await {
+            Ok(Ok(0)) => break, // stream ended
+            Ok(Ok(n)) => {
+                if file.write_all(&buf[..n]).await.is_err() {
+                    break;
+                }
+                total += n as u64;
+                emit_recording_progress(app, &started, total, &mut last_sec);
+            }
+            Ok(Err(_)) => break, // read error
+            Err(_) => break,     // stalled stream
+        }
+    }
+    let _ = file.flush().await;
+}
+
+// Record an ICY stream, starting a new file each time the StreamTitle changes.
+// Audio bytes are written to the current segment; the interleaved metadata
+// blocks are consumed here (never written to disk) and drive the splitting.
+async fn record_split(
+    app: &tauri::AppHandle,
+    mut reader: BufReader<Box<dyn AsyncStream>>,
+    metaint: usize,
+    base_path: &str,
+    stop: &Arc<AtomicBool>,
+) {
+    let base = std::path::Path::new(base_path);
+    let mut index = 1usize;
+    let mut file = match tokio::fs::File::create(segment_path(base, index, None)).await {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("[rec] cannot create segment: {:?}", e);
+            return;
+        }
+    };
+    let mut buf = vec![0u8; 16384];
+    let mut until_meta = metaint;
+    let mut last_title = String::new();
+    let started = std::time::Instant::now();
+    let mut total: u64 = 0;
+    let mut last_sec = u64::MAX;
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
+        if until_meta > 0 {
+            let to_read = buf.len().min(until_meta);
+            match timeout(Duration::from_secs(15), reader.read(&mut buf[..to_read])).await {
+                Ok(Ok(0)) => break,
+                Ok(Ok(n)) => {
+                    if file.write_all(&buf[..n]).await.is_err() {
+                        break;
+                    }
+                    until_meta -= n;
+                    total += n as u64;
+                    emit_recording_progress(app, &started, total, &mut last_sec);
+                }
+                Ok(Err(_)) => break,
+                Err(_) => break,
+            }
+        } else {
+            // Metadata block: one length byte (16-byte units) + payload.
+            let mut len_byte = [0u8; 1];
+            if timeout(Duration::from_secs(15), reader.read_exact(&mut len_byte))
+                .await
+                .map(|r| r.is_err())
+                .unwrap_or(true)
+            {
+                break;
+            }
+            let meta_len = (len_byte[0] as usize) * 16;
+            if meta_len > 0 {
+                let mut meta_buf = vec![0u8; meta_len];
+                if timeout(Duration::from_secs(15), reader.read_exact(&mut meta_buf))
+                    .await
+                    .map(|r| r.is_err())
+                    .unwrap_or(true)
+                {
+                    break;
+                }
+                if let Some(title) = parse_stream_title(&String::from_utf8_lossy(&meta_buf)) {
+                    if title != last_title {
+                        last_title = title.clone();
+                        // Finish the current segment and open one for the new track.
+                        let _ = file.flush().await;
+                        index += 1;
+                        match tokio::fs::File::create(segment_path(base, index, Some(&title))).await
+                        {
+                            Ok(f) => file = f,
+                            Err(e) => {
+                                eprintln!("[rec] cannot create segment: {:?}", e);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            until_meta = metaint;
+        }
+    }
+    let _ = file.flush().await;
+}
+
+// Emit a recording-progress event at most once per elapsed second.
+fn emit_recording_progress(
+    app: &tauri::AppHandle,
+    started: &std::time::Instant,
+    total: u64,
+    last_sec: &mut u64,
+) {
+    let secs = started.elapsed().as_secs();
+    if secs != *last_sec {
+        *last_sec = secs;
+        let _ = app.emit(
+            "recording-progress",
+            RecordingProgress {
+                seconds: secs,
+                bytes: total,
+            },
+        );
+    }
+}
+
 #[tauri::command]
 fn start_recording(
+    app: tauri::AppHandle,
     state: tauri::State<'_, RecordingState>,
     url: String,
     path: String,
+    split: bool,
 ) -> Result<(), String> {
     let mut guard = state.stop.lock().map_err(|_| "lock poisoned")?;
     if let Some(flag) = guard.as_ref() {
@@ -93,7 +269,7 @@ fn start_recording(
     }
     let flag = Arc::new(AtomicBool::new(false));
     *guard = Some(flag.clone());
-    tauri::async_runtime::spawn(record_stream(url, path, flag));
+    tauri::async_runtime::spawn(record_stream(app, url, path, flag, split));
     Ok(())
 }
 
@@ -802,4 +978,152 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_url_https_default_port() {
+        let (host, port, path, ssl) = parse_url("https://example.com/stream").unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 443);
+        assert_eq!(path, "/stream");
+        assert!(ssl);
+    }
+
+    #[test]
+    fn parse_url_http_explicit_port_no_path() {
+        let (host, port, path, ssl) = parse_url("http://radio.fm:8000").unwrap();
+        assert_eq!(host, "radio.fm");
+        assert_eq!(port, 8000);
+        assert_eq!(path, "/");
+        assert!(!ssl);
+    }
+
+    #[test]
+    fn parse_url_no_scheme_defaults_to_http() {
+        let (host, port, _, ssl) = parse_url("radio.fm/live").unwrap();
+        assert_eq!(host, "radio.fm");
+        assert_eq!(port, 80);
+        assert!(!ssl);
+    }
+
+    #[test]
+    fn parse_url_trims_whitespace() {
+        let (host, _, _, _) = parse_url("  http://radio.fm/live  ").unwrap();
+        assert_eq!(host, "radio.fm");
+    }
+
+    #[test]
+    fn parse_url_rejects_bad_port() {
+        assert!(parse_url("http://radio.fm:notaport/live").is_none());
+    }
+
+    #[test]
+    fn resolve_location_absolute_kept() {
+        assert_eq!(
+            resolve_location("http://a.com/x", "https://b.com/y"),
+            "https://b.com/y"
+        );
+    }
+
+    #[test]
+    fn resolve_location_root_relative() {
+        assert_eq!(
+            resolve_location("http://a.com:8000/x", "/y/z"),
+            "http://a.com:8000/y/z"
+        );
+    }
+
+    #[test]
+    fn resolve_location_relative_default_port_omitted() {
+        assert_eq!(
+            resolve_location("https://a.com/x", "y/z"),
+            "https://a.com/y/z"
+        );
+    }
+
+    #[test]
+    fn is_playlist_detects_extensions_and_types() {
+        assert!(is_playlist("", "http://a.com/list.pls"));
+        assert!(is_playlist("", "http://a.com/list.m3u"));
+        assert!(is_playlist("audio/x-scpls", "http://a.com/x"));
+        assert!(is_playlist("application/x-mpegurl", "http://a.com/x?q=1"));
+    }
+
+    #[test]
+    fn is_playlist_excludes_hls_manifest() {
+        assert!(!is_playlist(
+            "application/vnd.apple.mpegurl",
+            "http://a.com/x.m3u8"
+        ));
+        assert!(!is_playlist("audio/mpeg", "http://a.com/stream"));
+    }
+
+    #[test]
+    fn first_stream_url_from_pls() {
+        let body = "[playlist]\nFile1=http://stream.fm/live\nTitle1=Radio\n";
+        assert_eq!(
+            first_stream_url(body),
+            Some("http://stream.fm/live".to_string())
+        );
+    }
+
+    #[test]
+    fn first_stream_url_from_m3u_bare_line() {
+        let body = "#EXTM3U\n#EXTINF:-1,Radio\nhttps://stream.fm/live\n";
+        assert_eq!(
+            first_stream_url(body),
+            Some("https://stream.fm/live".to_string())
+        );
+    }
+
+    #[test]
+    fn first_stream_url_skips_hls() {
+        let body = "File1=http://stream.fm/playlist.m3u8\n";
+        assert_eq!(first_stream_url(body), None);
+    }
+
+    #[test]
+    fn parse_stream_title_extracts_title() {
+        let meta = "StreamTitle='Artist - Song';StreamUrl='http://x';";
+        assert_eq!(parse_stream_title(meta), Some("Artist - Song".to_string()));
+    }
+
+    #[test]
+    fn parse_stream_title_empty_is_none() {
+        assert_eq!(parse_stream_title("StreamTitle='';"), None);
+        assert_eq!(parse_stream_title("no metadata here"), None);
+    }
+
+    #[test]
+    fn sanitize_filename_strips_invalid_chars() {
+        assert_eq!(sanitize_filename("AC/DC: Back?"), "AC_DC_ Back_");
+        assert_eq!(sanitize_filename("   "), "track");
+        assert_eq!(sanitize_filename("..."), "track");
+    }
+
+    #[test]
+    fn segment_path_with_and_without_title() {
+        // Forward slashes are accepted as separators on both Windows and Unix.
+        let base = std::path::Path::new("rec/Jazz.mp3");
+        let p1 = segment_path(base, 1, None);
+        assert_eq!(p1.file_name().unwrap().to_str().unwrap(), "Jazz - 01.mp3");
+        let p2 = segment_path(base, 2, Some("Artist - Song"));
+        assert_eq!(
+            p2.file_name().unwrap().to_str().unwrap(),
+            "Jazz - 02 - Artist - Song.mp3"
+        );
+    }
+
+    #[test]
+    fn parse_status_code_variants() {
+        assert_eq!(parse_status_code("HTTP/1.1 200 OK"), 200);
+        assert_eq!(parse_status_code("ICY 200 OK"), 200);
+        assert_eq!(parse_status_code("HTTP/1.0 302 Found"), 302);
+        // Malformed lines fall back to 200
+        assert_eq!(parse_status_code("garbage"), 200);
+    }
 }
