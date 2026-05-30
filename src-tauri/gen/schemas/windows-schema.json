@@ -2187,6 +2187,12 @@
           "markdownDescription": "Enables the get_stream_metadata command without any pre-configured scope."
         },
         {
+          "description": "Enables the install_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-install-update",
+          "markdownDescription": "Enables the install_update command without any pre-configured scope."
+        },
+        {
           "description": "Enables the is_recording command without any pre-configured scope.",
           "type": "string",
           "const": "allow-is-recording",
@@ -2197,6 +2203,12 @@
           "type": "string",
           "const": "allow-open-url",
           "markdownDescription": "Enables the open_url command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the restart_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-restart-app",
+          "markdownDescription": "Enables the restart_app command without any pre-configured scope."
         },
         {
           "description": "Enables the start_recording command without any pre-configured scope.",
@@ -2229,6 +2241,12 @@
           "markdownDescription": "Denies the get_stream_metadata command without any pre-configured scope."
         },
         {
+          "description": "Denies the install_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-install-update",
+          "markdownDescription": "Denies the install_update command without any pre-configured scope."
+        },
+        {
           "description": "Denies the is_recording command without any pre-configured scope.",
           "type": "string",
           "const": "deny-is-recording",
@@ -2239,6 +2257,12 @@
           "type": "string",
           "const": "deny-open-url",
           "markdownDescription": "Denies the open_url command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the restart_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-restart-app",
+          "markdownDescription": "Denies the restart_app command without any pre-configured scope."
         },
         {
           "description": "Denies the start_recording command without any pre-configured scope.",
