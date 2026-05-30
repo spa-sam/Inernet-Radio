@@ -907,8 +907,40 @@ fn open_url(app: tauri::AppHandle, url: String) {
     let _ = app.opener().open_url(url, None::<&str>);
 }
 
+// Check for and install an application update. Compiled only when the
+// `updater` feature is enabled (desktop), which also registers the plugin.
+#[cfg(all(desktop, feature = "updater"))]
+#[tauri::command]
+async fn check_for_updates(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app
+        .updater()
+        .map_err(|_| "Updater is not configured yet".to_string())?;
+    match updater.check().await {
+        Ok(Some(update)) => {
+            let version = update.version.clone();
+            update
+                .download_and_install(|_, _| {}, || {})
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(format!("Updated to {} — restart to apply", version))
+        }
+        Ok(None) => Ok("You are on the latest version".to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+// Stub used when the updater feature is off (default) or on mobile, so the
+// frontend command always exists but reports the updater is unavailable.
+#[cfg(not(all(desktop, feature = "updater")))]
+#[tauri::command]
+async fn check_for_updates() -> Result<String, String> {
+    Err("Auto-updater is not enabled in this build".to_string())
+}
+
 fn main() {
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
@@ -919,7 +951,17 @@ fn main() {
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(tauri_plugin_window_state::StateFlags::SIZE)
                 .build(),
-        )
+        );
+
+    // The updater plugin is desktop-only and opt-in via the `updater` feature.
+    // It panics on startup unless plugins.updater is configured, so it stays
+    // out of default builds.
+    #[cfg(all(desktop, feature = "updater"))]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    builder
         .manage(RecordingState::default())
         .invoke_handler(tauri::generate_handler![
             get_stream_metadata,
@@ -927,7 +969,8 @@ fn main() {
             open_url,
             start_recording,
             stop_recording,
-            is_recording
+            is_recording,
+            check_for_updates
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

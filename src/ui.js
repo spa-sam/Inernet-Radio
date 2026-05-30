@@ -8,7 +8,7 @@ import { APP_VERSION, COPY_ICON_SVG, CHECK_ICON_SVG } from './constants.js';
 import { hasTauriApi } from './util.js';
 import { saveSetting } from './db.js';
 import { refreshVisualizerSize } from './visualizer.js';
-import { stopStation } from './player.js';
+import { stopStation, selectStation } from './player.js';
 import { addToTrackHistory } from './stations.js';
 
 // Non-blocking toast notification (replaces native alert)
@@ -297,6 +297,92 @@ function updateSleepTimerDisplay() {
     const m = Math.floor(totalSeconds / 60);
     const s = totalSeconds % 60;
     dom.sleepTimerRemaining.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// Alarm (wake-to-radio): start playback at a chosen time of day. Repeats daily
+// until disabled. The chosen time and enabled flag are persisted, so the alarm
+// survives a restart (rescheduled on startup via initAlarm).
+
+// Next future timestamp (ms) for "HH:MM" — today if still ahead, else tomorrow.
+function nextAlarmTimestamp(timeStr) {
+    const [h, m] = (timeStr || '').split(':').map(n => parseInt(n, 10));
+    if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+    const target = new Date();
+    target.setHours(h, m, 0, 0);
+    if (target.getTime() <= Date.now()) target.setDate(target.getDate() + 1);
+    return target.getTime();
+}
+
+// Apply the alarm UI selection: persist it and (re)schedule or cancel.
+export function setAlarm(enabled, timeStr) {
+    state.settings.alarmEnabled = enabled;
+    state.settings.alarmTime = timeStr;
+    saveSetting('alarmEnabled', enabled);
+    saveSetting('alarmTime', timeStr);
+    if (enabled && timeStr) {
+        scheduleAlarm();
+        toast(`Alarm set for ${timeStr}`, 'success');
+    } else {
+        cancelAlarm();
+    }
+}
+
+// Schedule (or reschedule) the alarm from the persisted settings.
+export function initAlarm() {
+    if (state.settings.alarmEnabled && state.settings.alarmTime) {
+        if (dom.alarmTime) dom.alarmTime.value = state.settings.alarmTime;
+        if (dom.alarmEnabledCheckbox) dom.alarmEnabledCheckbox.checked = true;
+        scheduleAlarm();
+    }
+}
+
+function scheduleAlarm() {
+    cancelAlarm();
+    state.alarmTarget = nextAlarmTimestamp(state.settings.alarmTime);
+    if (!state.alarmTarget) return;
+    if (dom.alarmStatus) dom.alarmStatus.classList.remove('hidden');
+    updateAlarmDisplay();
+    state.alarmInterval = setInterval(() => {
+        if (Date.now() >= state.alarmTarget) {
+            triggerAlarm();
+        } else {
+            updateAlarmDisplay();
+        }
+    }, 1000);
+}
+
+export function cancelAlarm() {
+    if (state.alarmInterval) {
+        clearInterval(state.alarmInterval);
+        state.alarmInterval = null;
+    }
+    state.alarmTarget = 0;
+    if (dom.alarmStatus) dom.alarmStatus.classList.add('hidden');
+}
+
+function triggerAlarm() {
+    // Begin playback if idle. selectStation updates the now-playing card and
+    // starts the stream (which fades the volume in from silence).
+    if (!state.isPlaying) {
+        const station = state.currentStation || state.lastStation;
+        if (station) {
+            selectStation(station, null);
+            toast('Alarm — playback started', 'success');
+        }
+    }
+    // Roll over to the same time tomorrow so the alarm repeats daily.
+    state.alarmTarget = nextAlarmTimestamp(state.settings.alarmTime);
+    updateAlarmDisplay();
+}
+
+function updateAlarmDisplay() {
+    if (!dom.alarmRemaining || !state.alarmTarget) return;
+    const totalSeconds = Math.max(0, Math.ceil((state.alarmTarget - Date.now()) / 1000));
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    dom.alarmRemaining.textContent =
+        `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 // Copy the current track title (falls back to the station name) to clipboard

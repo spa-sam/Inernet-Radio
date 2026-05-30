@@ -17,6 +17,7 @@
     "allow-open-url",
     "allow-start-recording",
     "allow-stop-recording",
-    "allow-is-recording"
+    "allow-is-recording",
+    "allow-check-for-updates"
   ]
 }

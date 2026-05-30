@@ -1608,8 +1608,9 @@ body {
 .track-history-yt { flex-shrink: 0; color: var(--text-muted); }
 .track-history-yt:hover { color: var(--accent); }
 
-/* Sleep timer countdown row */
-.sleep-timer-status #sleep-timer-remaining {
+/* Sleep timer / alarm countdown row */
+.sleep-timer-status #sleep-timer-remaining,
+.sleep-timer-status #alarm-remaining {
     font-weight: 700;
     color: var(--accent);
     font-variant-numeric: tabular-nums;

@@ -60,8 +60,11 @@ import {
     applyViewMode,
     toggleViewMode,
     startSleepTimer,
+    setAlarm,
+    initAlarm,
     copyCurrentTrack,
-    openTrackOnYouTube
+    openTrackOnYouTube,
+    toast
 } from './ui.js';
 
 // Load persisted data from SQLite (or localStorage fallback) into shared state.
@@ -121,6 +124,9 @@ async function init() {
     buildEqUi();
     if (dom.normalizeCheckbox) dom.normalizeCheckbox.checked = state.settings.normalizeEnabled;
     if (dom.recordSplitCheckbox) dom.recordSplitCheckbox.checked = state.settings.recordSplit;
+
+    // Restore and (re)schedule the wake-to-radio alarm
+    initAlarm();
 
     // Apply narrow / wide layout
     applyViewMode(state.settings.wideMode, true);
@@ -220,7 +226,7 @@ dom.filtersToggleBtn.addEventListener('click', () => {
 });
 
 // Re-run search when a filter changes (keeps results in sync with the panel)
-[dom.filterCountry, dom.filterTag, dom.filterBitrate, dom.filterCodec].forEach(sel => {
+[dom.filterCountry, dom.filterTag, dom.filterBitrate, dom.filterCodec, dom.filterLanguage, dom.filterOrder].forEach(sel => {
     sel.addEventListener('change', () => {
         // A typed tag takes priority; otherwise fall back to the active preset
         let tag = dom.filterTag.value.trim();
@@ -315,6 +321,37 @@ if (dom.clearHistoryBtn) dom.clearHistoryBtn.addEventListener('click', clearTrac
 if (dom.sleepTimerSelect) {
     dom.sleepTimerSelect.addEventListener('change', () => {
         startSleepTimer(parseInt(dom.sleepTimerSelect.value, 10));
+    });
+}
+
+// Alarm (wake to radio): re-apply whenever the toggle or time changes
+function applyAlarmFromUi() {
+    setAlarm(dom.alarmEnabledCheckbox.checked, dom.alarmTime.value);
+}
+if (dom.alarmEnabledCheckbox) dom.alarmEnabledCheckbox.addEventListener('change', applyAlarmFromUi);
+if (dom.alarmTime) dom.alarmTime.addEventListener('change', applyAlarmFromUi);
+
+// Check for updates (desktop only; requires plugins.updater to be configured)
+if (dom.checkUpdatesBtn) {
+    dom.checkUpdatesBtn.addEventListener('click', async () => {
+        if (!hasTauriApi) {
+            toast('Updates are available in the desktop app only', 'error');
+            return;
+        }
+        const btn = dom.checkUpdatesBtn;
+        btn.disabled = true;
+        const original = btn.textContent;
+        btn.textContent = 'Checking…';
+        try {
+            const { invoke } = window.__TAURI__.core;
+            const message = await invoke('check_for_updates');
+            toast(message, 'info');
+        } catch (e) {
+            toast('Update check failed: ' + (e && e.message ? e.message : e), 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = original;
+        }
     });
 }
 

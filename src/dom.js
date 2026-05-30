@@ -43,6 +43,8 @@ export const dom = {
     filterTag: byId('filter-tag'),
     filterBitrate: byId('filter-bitrate'),
     filterCodec: byId('filter-codec'),
+    filterLanguage: byId('filter-language'),
+    filterOrder: byId('filter-order'),
 
     // Recently played
     recentlyPlayedSection: byId('recently-played-section'),
@@ -90,10 +92,15 @@ export const dom = {
     enterCompactBtn: byId('enter-compact-btn'),
     exitCompactBtn: byId('exit-compact-btn'),
     alwaysOnTopBtn: byId('always-on-top-btn'),
+    checkUpdatesBtn: byId('check-updates-btn'),
     viewModeSelect: byId('view-mode-select'),
     sleepTimerSelect: byId('sleep-timer-select'),
     sleepTimerStatus: byId('sleep-timer-status'),
     sleepTimerRemaining: byId('sleep-timer-remaining'),
+    alarmEnabledCheckbox: byId('alarm-enabled'),
+    alarmTime: byId('alarm-time'),
+    alarmStatus: byId('alarm-status'),
+    alarmRemaining: byId('alarm-remaining'),
     aboutVersion: byId('about-version'),
 
     // Layout / header
