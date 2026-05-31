@@ -21,6 +21,9 @@ export const dom = {
     // Search
     searchInput: byId('search-input'),
     searchBtn: byId('search-btn'),
+    searchDropdownBtn: byId('search-dropdown-btn'),
+    searchDropdown: byId('search-dropdown'),
+    addGenreBtn: byId('add-genre-btn'),
     stationsList: byId('stations-list'),
 
     // Now playing
@@ -45,9 +48,21 @@ export const dom = {
     filterCodec: byId('filter-codec'),
     filterLanguage: byId('filter-language'),
     filterOrder: byId('filter-order'),
-    m3uBar: byId('m3u-bar'),
-    m3uGenreSelect: byId('m3u-genre-select'),
-    m3uRefreshBtn: byId('m3u-refresh-btn'),
+    // Source switch + search context
+    sourceSwitch: byId('source-switch'),
+    ctxSearch: byId('ctx-search'),
+
+    // Settings → Sources section (search source toggles)
+    sourcesList: byId('sources-list'),
+
+    // Genre presets (editable chip row)
+    presets: byId('presets'),
+    presetGenres: byId('preset-genres'),
+    presetEditBtn: byId('preset-edit-btn'),
+    presetEditBar: byId('preset-edit-bar'),
+    presetAddInput: byId('preset-add-input'),
+    presetAddBtn: byId('preset-add-btn'),
+    presetResetBtn: byId('preset-reset-btn'),
 
     // Recently played
     recentlyPlayedSection: byId('recently-played-section'),

@@ -5,7 +5,7 @@
 
 import { state } from './core/state.js';
 import { dom } from './core/dom.js';
-import { APP_VERSION } from './core/constants.js';
+import { APP_VERSION, SOURCES } from './core/constants.js';
 import { hasTauriApi, generatePlaceholderLogo } from './core/util.js';
 import { loadApiServers, loadFilterOptions } from './services/api.js';
 import {
@@ -36,9 +36,6 @@ import {
     searchStations,
     loadMoreStations,
     loadPopularStations,
-    loadSomaFM,
-    getM3UGenres,
-    loadM3URadio,
     showFavorites,
     addCustomStation,
     saveEditedStation,
@@ -50,6 +47,21 @@ import {
     exportFavorites,
     importStations
 } from './features/stations.js';
+import {
+    renderGenrePresets,
+    addGenrePreset,
+    removeGenrePreset,
+    resetGenrePresets,
+    setupPresetDrag,
+    updateAddGenreButton,
+    setActivePreset
+} from './features/presets.js';
+import {
+    isSourceEnabled,
+    setSourceEnabled,
+    checkConnectivity
+} from './features/sources.js';
+import { setupSearchDropdown } from './features/searchDropdown.js';
 import {
     setStationName,
     updateMetadata,
@@ -149,6 +161,16 @@ async function init() {
     // Initialize volume control
     setVolume(dom.volumeSlider.value);
 
+    // Render the editable genre preset chips and enable drag-reorder
+    renderGenrePresets();
+    setupPresetDrag();
+
+    // Build the Settings → Sources rows (connectivity is checked when opened)
+    renderSourcesSettings();
+
+    // Wire the combined search dropdown (suggestions + genres + collections)
+    setupSearchDropdown();
+
     // Render recently played
     renderRecentlyPlayed();
 
@@ -233,9 +255,8 @@ dom.filtersToggleBtn.addEventListener('click', () => {
         // A typed tag takes priority; otherwise fall back to the active preset
         let tag = dom.filterTag.value.trim();
         if (!tag) {
-            const activePreset = document.querySelector('.preset-btn.active');
-            tag = activePreset && !['favorites', 'somafm'].includes(activePreset.dataset.genre)
-                ? activePreset.dataset.genre : '';
+            const activeGenre = dom.presetGenres.querySelector('.preset-btn.active');
+            tag = activeGenre ? activeGenre.dataset.genre : '';
         }
         searchStations(dom.searchInput.value.trim(), tag);
     });
@@ -291,54 +312,147 @@ document.querySelectorAll('.tab').forEach(tab => {
             content.classList.remove('active');
         });
         document.getElementById('tab-' + tabId).classList.add('active');
+
+        // Refresh source connectivity dots when the Settings tab is opened
+        if (tabId === 'settings') refreshEnabledConnectivity();
     });
 });
 
-// Preset buttons
-document.querySelectorAll('.preset-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const genre = btn.dataset.genre;
+// Source switch — two modes: unified Search (all enabled sources at once) and
+// Favorites. The search controls + genre chips are shown only in Search mode.
+function setSource(source) {
+    document.querySelectorAll('.source-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.source === source));
+    if (dom.ctxSearch) dom.ctxSearch.classList.toggle('hidden', source !== 'search');
 
-        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-
-        // The M3U genre picker is only shown while the M3U source is active
-        if (dom.m3uBar) dom.m3uBar.classList.toggle('hidden', genre !== 'm3u');
-
-        if (genre === 'favorites') {
-            showFavorites();
-        } else if (genre === 'somafm') {
-            loadSomaFM();
-        } else if (genre === 'm3u') {
-            openM3URadio();
-        } else {
-            searchStations('', genre);
-        }
-    });
-});
-
-// M3U Radio: populate the genre dropdown (cached) and load the selected genre.
-async function openM3URadio(forceRefresh = false) {
-    if (!dom.m3uGenreSelect) return;
-    dom.stationsList.innerHTML = '<div class="loading">Loading genres…</div>';
-    try {
-        const genres = await getM3UGenres(forceRefresh);
-        if (!dom.m3uGenreSelect.options.length || forceRefresh) {
-            dom.m3uGenreSelect.innerHTML = genres
-                .map(g => `<option value="${g.url}">${g.label}</option>`)
-                .join('');
-        }
-        const url = dom.m3uGenreSelect.value || (genres[0] && genres[0].url);
-        if (url) await loadM3URadio(url);
-    } catch (e) {
-        dom.stationsList.innerHTML = '<div class="loading-hint">Failed to load genre list</div>';
+    if (source === 'favorites') {
+        setActivePreset('');
+        showFavorites();
+    } else {
+        // Search: honour a typed query or an active genre chip, else popular.
+        const query = dom.searchInput.value.trim();
+        const activeGenre = dom.presetGenres.querySelector('.preset-btn.active');
+        if (query) searchStations(query);
+        else if (activeGenre) searchStations('', activeGenre.dataset.genre);
+        else { setActivePreset(''); loadPopularStations(); }
     }
 }
-if (dom.m3uGenreSelect) {
-    dom.m3uGenreSelect.addEventListener('change', () => loadM3URadio(dom.m3uGenreSelect.value));
+
+dom.sourceSwitch.addEventListener('click', (e) => {
+    const btn = e.target.closest('.source-btn');
+    if (btn) setSource(btn.dataset.source);
+});
+
+// Genre chips (Search source only) — delegated so dynamic chips work too.
+dom.presets.addEventListener('click', (e) => {
+    // Remove (✕) affordance inside a genre chip (edit mode)
+    const del = e.target.closest('.preset-del');
+    if (del) {
+        const chip = del.closest('.preset-btn');
+        if (chip) removeGenrePreset(chip.dataset.genre);
+        return;
+    }
+
+    // The edit toggle is not a .preset-btn, so it is ignored here (handled below)
+    const btn = e.target.closest('.preset-btn');
+    if (!btn) return;
+
+    // searchStations highlights the matching chip via setActivePreset.
+    searchStations('', btn.dataset.genre);
+});
+
+// Genre preset editing: toggle edit mode, add by label, reset to defaults.
+if (dom.presetEditBtn) {
+    dom.presetEditBtn.addEventListener('click', () => {
+        const editing = dom.presetGenres.classList.toggle('editing');
+        dom.presetEditBtn.classList.toggle('active', editing);
+        if (dom.presetEditBar) dom.presetEditBar.classList.toggle('hidden', !editing);
+        // Re-render so chips pick up the draggable attribute for the new mode
+        renderGenrePresets();
+    });
 }
-if (dom.m3uRefreshBtn) {
-    dom.m3uRefreshBtn.addEventListener('click', () => openM3URadio(true));
+
+function submitAddPreset() {
+    if (addGenrePreset(dom.presetAddInput.value)) {
+        dom.presetAddInput.value = '';
+    } else {
+        toast('Genre is empty or already added', 'error');
+    }
+}
+if (dom.presetAddBtn) dom.presetAddBtn.addEventListener('click', submitAddPreset);
+if (dom.presetAddInput) {
+    dom.presetAddInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') submitAddPreset();
+    });
+}
+if (dom.presetResetBtn) dom.presetResetBtn.addEventListener('click', resetGenrePresets);
+
+// Quick-add: typing or picking a genre in the search box reveals a "+" that
+// adds it straight to the genre presets.
+dom.searchInput.addEventListener('input', updateAddGenreButton);
+if (dom.addGenreBtn) {
+    dom.addGenreBtn.addEventListener('click', () => {
+        const val = dom.searchInput.value.trim();
+        if (addGenrePreset(val)) {
+            toast(`Added “${val}” to genres`, 'success');
+            updateAddGenreButton();
+        } else {
+            toast('Genre is empty or already added', 'error');
+        }
+    });
+}
+
+// --- Settings: search sources -----------------------------------------------
+
+// Set the connectivity dot for a source row: off | checking | online | offline | local
+function setSourceDot(id, status) {
+    const dot = dom.sourcesList &&
+        dom.sourcesList.querySelector(`.source-row[data-source="${id}"] .source-dot`);
+    if (dot) dot.className = 'source-dot ' + status;
+}
+
+async function refreshConnectivity(id) {
+    if (!isSourceEnabled(id)) { setSourceDot(id, 'off'); return; }
+    setSourceDot(id, 'checking');
+    const ok = await checkConnectivity(id);
+    setSourceDot(id, ok === null ? 'local' : (ok ? 'online' : 'offline'));
+}
+
+function refreshEnabledConnectivity() {
+    SOURCES.forEach(src => refreshConnectivity(src.id));
+}
+
+// Build the Settings → Sources rows (toggle + connectivity dot) from SOURCES.
+function renderSourcesSettings() {
+    if (!dom.sourcesList) return;
+    dom.sourcesList.replaceChildren();
+    for (const src of SOURCES) {
+        const row = document.createElement('div');
+        row.className = 'source-row';
+        row.dataset.source = src.id;
+
+        const label = document.createElement('label');
+        label.className = 'checkbox-container';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = isSourceEnabled(src.id);
+        cb.addEventListener('change', () => {
+            setSourceEnabled(src.id, cb.checked);
+            refreshConnectivity(src.id);
+        });
+        const mark = document.createElement('span');
+        mark.className = 'checkmark';
+        label.append(cb, mark, document.createTextNode(
+            src.label + (src.note ? ` — ${src.note}` : '')
+        ));
+
+        const dot = document.createElement('span');
+        dot.className = 'source-dot off';
+        dot.title = 'Connectivity';
+
+        row.append(label, dot);
+        dom.sourcesList.appendChild(row);
+    }
 }
 
 // Custom stations

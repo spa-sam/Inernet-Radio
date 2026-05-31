@@ -19,31 +19,37 @@ export async function loadPopularStations() {
     }
 }
 
+// Fetch and map SomaFM channels into station objects. Shared by the browse
+// view (loadSomaFM) and the unified-search cache (sources.js).
+export async function fetchSomaStations() {
+    const res = await fetch('https://somafm.com/channels.json');
+    const data = await res.json();
+    return (data.channels || []).map(ch => {
+        // Pick the best available playlist (a .pls the proxy can resolve)
+        const playlists = ch.playlists || [];
+        const best = playlists.find(p => p.quality === 'highest') || playlists[0] || {};
+        return {
+            stationuuid: 'somafm_' + ch.id,
+            name: ch.title,
+            url: best.url,
+            url_resolved: best.url,
+            favicon: ch.image || ch.xlimage || '',
+            tags: ch.genre || '',
+            country: 'SomaFM',
+            bitrate: 0,
+            codec: '',
+            hls: 0
+        };
+    }).filter(s => s.url);
+}
+
 // Load SomaFM curated channels as stations
 export async function loadSomaFM() {
     state.searchPage.active = false;
     dom.stationsList.innerHTML = '<div class="loading">Loading SomaFM...</div>';
 
     try {
-        const res = await fetch('https://somafm.com/channels.json');
-        const data = await res.json();
-        const stations = (data.channels || []).map(ch => {
-            // Pick the best available playlist (a .pls the proxy can resolve)
-            const playlists = ch.playlists || [];
-            const best = playlists.find(p => p.quality === 'highest') || playlists[0] || {};
-            return {
-                stationuuid: 'somafm_' + ch.id,
-                name: ch.title,
-                url: best.url,
-                url_resolved: best.url,
-                favicon: ch.image || ch.xlimage || '',
-                tags: ch.genre || '',
-                country: 'SomaFM',
-                bitrate: 0,
-                codec: '',
-                hls: 0
-            };
-        }).filter(s => s.url);
+        const stations = await fetchSomaStations();
 
         if (stations.length === 0) {
             dom.stationsList.innerHTML = '<div class="loading-hint">SomaFM returned no stations</div>';

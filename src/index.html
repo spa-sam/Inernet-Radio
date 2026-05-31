@@ -172,12 +172,24 @@
                 <div class="radio-side">
                     <!-- Search section with filters -->
                     <div class="search-section">
+                        <!-- Source switch: where the station list comes from -->
+                        <div class="source-switch" id="source-switch">
+                            <button class="source-btn active" data-source="search">Search</button>
+                            <button class="source-btn" data-source="favorites">★ Favorites</button>
+                        </div>
+
+                        <!-- Search context: free-text search, filters and genre chips -->
+                        <div class="source-context" id="ctx-search">
                         <div class="search-row">
                             <div class="search-box">
                                 <button id="search-btn" class="search-go" title="Search">
                                     <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor"/></svg>
                                 </button>
                                 <input type="text" id="search-input" placeholder="Search radio stations...">
+                                <button id="add-genre-btn" class="add-genre-btn hidden" title="Add as genre preset">+</button>
+                                <button id="search-dropdown-btn" class="search-dropdown-btn" title="Browse genres & collections">▾</button>
+                                <!-- Combined dropdown: suggestions + genres + collections -->
+                                <div class="search-dropdown hidden" id="search-dropdown"></div>
                             </div>
                             <button id="filters-toggle-btn" class="filters-toggle-btn">
                                 <svg viewBox="0 0 24 24" width="14" height="14" class="filter-icon"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" fill="currentColor"/></svg>
@@ -233,26 +245,18 @@
                             </div>
                         </div>
 
-                        <div class="presets">
-                            <button class="preset-btn preset-favorites" data-genre="favorites">★ Favorites</button>
-                            <button class="preset-btn preset-somafm" data-genre="somafm">SomaFM</button>
-                            <button class="preset-btn preset-m3u" data-genre="m3u">M3U Radio</button>
-                            <button class="preset-btn" data-genre="pop">Pop</button>
-                            <button class="preset-btn" data-genre="dance">Dance</button>
-                            <button class="preset-btn" data-genre="rock">Rock</button>
-                            <button class="preset-btn" data-genre="rap">Rap</button>
-                            <button class="preset-btn" data-genre="ambient">Ambient</button>
-                            <button class="preset-btn" data-genre="chill">Chill</button>
-                            <button class="preset-btn" data-genre="classical">Classic</button>
-                            <button class="preset-btn" data-genre="jazz">Jazz</button>
-                            <button class="preset-btn" data-genre="news">News</button>
+                        <div class="presets" id="presets">
+                            <!-- Editable genre chips are rendered here from settings.genrePresets -->
+                            <span class="preset-genres" id="preset-genres"></span>
+                            <button class="preset-edit-btn" id="preset-edit-btn" title="Edit genres">✎</button>
                         </div>
 
-                        <div class="m3u-bar hidden" id="m3u-bar">
-                            <label for="m3u-genre-select">Genre</label>
-                            <select id="m3u-genre-select" class="custom-select"></select>
-                            <button id="m3u-refresh-btn" class="m3u-refresh-btn" title="Refresh genre list">↻</button>
+                        <div class="preset-edit-bar hidden" id="preset-edit-bar">
+                            <input type="text" id="preset-add-input" placeholder="Add genre (e.g. techno)" maxlength="30">
+                            <button id="preset-add-btn" class="preset-add-btn">Add</button>
+                            <button id="preset-reset-btn" class="preset-reset-btn" title="Restore default genres">Reset</button>
                         </div>
+                        </div><!-- /ctx-search -->
                     </div>
 
                     <!-- Recently played stations -->
@@ -368,6 +372,10 @@
                     <label for="visualizer-color">Equalizer color</label>
                     <input type="color" id="visualizer-color" value="#ff5a36">
                 </div>
+
+                <h3>Sources</h3>
+                <p class="settings-hint">Choose which catalogues the unified search includes. The dot shows whether each enabled source is reachable.</p>
+                <div class="sources-list" id="sources-list"></div>
 
                 <h3>Equalizer</h3>
                 <div class="setting-item">

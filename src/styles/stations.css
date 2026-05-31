@@ -45,6 +45,86 @@
 }
 #search-input::placeholder { color: var(--text-dim); }
 
+/* The search box anchors the absolute combined dropdown panel */
+.search-box { position: relative; }
+.search-dropdown-btn {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1;
+    padding: 0 0.2rem;
+    cursor: pointer;
+}
+.search-dropdown-btn:hover { color: var(--accent); }
+
+/* Quick-add a typed/picked genre to the presets */
+.add-genre-btn {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0 0.2rem;
+    cursor: pointer;
+}
+.add-genre-btn:hover { color: #fff; }
+.add-genre-btn.hidden { display: none; }
+
+.search-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 40;
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 0.4rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+.search-dropdown.hidden { display: none; }
+.sd-section { padding: 0.2rem 0; }
+.sd-section + .sd-section { border-top: 1px solid var(--line); margin-top: 0.25rem; }
+.sd-title {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    padding: 0.25rem 0.5rem;
+}
+.sd-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 0.82rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.sd-item:hover { background: var(--surface-2); color: var(--accent); }
+.sd-item-sub {
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+.sd-empty { padding: 0.4rem 0.5rem; font-size: 0.78rem; color: var(--text-dim); }
+.sd-m3u { display: flex; flex-direction: column; }
+
 .filters-toggle-btn {
     display: flex;
     align-items: center;
@@ -101,10 +181,45 @@
 .filter-group input:focus { border-color: var(--accent); }
 
 /* Presets --------------------------------------------------------------- */
+/* Source switch — segmented control selecting the station provider. Styled
+   distinctly from the genre chips so the two axes don't look interchangeable. */
+.source-switch {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    margin-bottom: 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+}
+.source-btn {
+    flex: 1;
+    padding: 0.45rem 0.5rem;
+    border: none;
+    border-radius: calc(var(--radius-md) - 3px);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.source-btn:hover { color: var(--text); background: var(--surface-2); }
+.source-btn.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* Per-source contextual area (search controls vs M3U genre picker) */
+.source-context.hidden { display: none; }
+
 .presets {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: flex-start;
     gap: 0.4rem;
+    margin-top: 0.6rem;
 }
 .preset-btn {
     padding: 0.4rem 0.85rem;
@@ -124,21 +239,76 @@
     border-color: var(--accent);
     box-shadow: 0 0 10px var(--accent-glow);
 }
-.preset-favorites {
-    background: var(--accent-soft);
-    color: var(--accent-2);
-    border-color: rgba(255, 90, 54, 0.25);
+/* Editable genre chips — own wrapping flex row so drag-reorder has a real
+   drop target (a display:contents box receives no pointer events). Takes the
+   remaining width so the edit (✎) button sits to its right. */
+.preset-genres {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    flex: 1;
+    min-width: 0;
+    min-height: 30px;
 }
-.preset-favorites:hover { background: rgba(255, 90, 54, 0.22); color: #fff; }
-.preset-favorites.active { background: var(--accent); color: #fff; }
-.preset-somafm {
-    background: rgba(255, 255, 255, 0.04);
+
+/* Edit-mode toggle (✎) sits to the right of the chips, on the same row */
+.preset-edit-btn {
+    flex-shrink: 0;
+    margin-left: 0.5rem;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--surface);
     color: var(--text-muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: var(--transition);
 }
-.preset-m3u {
-    background: rgba(255, 255, 255, 0.04);
+.preset-edit-btn:hover { color: var(--text); background: var(--surface-2); }
+.preset-edit-btn.active { color: var(--accent); border-color: var(--accent); }
+
+/* Remove (✕) affordance inside a genre chip — only visible in edit mode */
+.preset-del { display: none; margin-left: 0.45rem; opacity: 0.65; font-size: 0.7rem; }
+.preset-del:hover { opacity: 1; color: var(--accent); }
+.preset-genres.editing .preset-btn { cursor: grab; }
+.preset-genres.editing .preset-del { display: inline; }
+.preset-btn.dragging { opacity: 0.5; }
+
+/* Add / reset bar shown while editing genres */
+.preset-edit-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+.preset-edit-bar.hidden { display: none; }
+.preset-edit-bar input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.76rem;
+}
+.preset-edit-bar input:focus { outline: none; border-color: var(--accent); }
+.preset-add-btn,
+.preset-reset-btn {
+    flex-shrink: 0;
+    padding: 0.4rem 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--surface-2);
     color: var(--text-muted);
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
 }
+.preset-add-btn:hover { color: #fff; background: var(--accent); border-color: var(--accent); }
+.preset-reset-btn:hover { color: var(--text); }
 
 /* M3U Radio genre picker */
 .m3u-bar {
@@ -208,6 +378,15 @@
     height: 18px;
     border-radius: 5px;
     flex-shrink: 0;
+}
+/* Cap the station name at ~15 chars; fade out (and clip) the last ~5 instead
+   of a hard ellipsis. */
+.recent-item span {
+    display: block;
+    max-width: 15ch;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, #000 10ch, transparent 15ch);
+    mask-image: linear-gradient(to right, #000 10ch, transparent 15ch);
 }
 
 /* Stations list --------------------------------------------------------- */

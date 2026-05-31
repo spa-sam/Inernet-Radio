@@ -89,6 +89,11 @@ export const state = {
         alarmEnabled: false,
         alarmTime: '07:00',
         m3uGenres: null,
+        genrePresets: null,
+        // Unified-search source toggles (M3U off by default — heavy to index)
+        sources: { radioBrowser: true, somafm: true, m3u: false, custom: true },
+        somaCache: null,   // { list, fetchedAt } — SomaFM channels for local search
+        m3uIndex: null,    // { list, fetchedAt } — aggregated M3U stations for search
         favoritesOrder: [],
         customOrder: []
     }

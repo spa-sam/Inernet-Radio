@@ -1,5 +1,39 @@
 /* Settings -------------------------------------------------------------- */
 .settings-section { display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* Short explanatory line under a settings heading */
+.settings-hint {
+    font-size: 0.76rem;
+    color: var(--text-dim);
+    margin: -0.1rem 0 0.1rem;
+}
+
+/* Sources section: one toggle row per search source + a connectivity dot */
+.sources-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.source-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 0.7rem 0.8rem;
+    transition: var(--transition);
+}
+.source-row:hover { background: var(--surface-2); }
+.source-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-dim);
+}
+.source-dot.off { background: var(--line); }
+.source-dot.checking { background: var(--warning, #e0a500); animation: source-dot-pulse 1s ease-in-out infinite; }
+.source-dot.online { background: #36c46a; box-shadow: 0 0 6px rgba(54, 196, 106, 0.6); }
+.source-dot.offline { background: #e0533d; box-shadow: 0 0 6px rgba(224, 83, 61, 0.5); }
+.source-dot.local { background: #36c46a; }
+@keyframes source-dot-pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
 .setting-item {
     background: var(--surface);
     border: 1px solid var(--line);

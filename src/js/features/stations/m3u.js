@@ -44,28 +44,34 @@ export async function getM3UGenres(forceRefresh = false) {
 // Fetch one genre playlist on demand (through the CORS proxy in raw mode so the
 // .m3u text is returned verbatim), parse it and show it as a transient list.
 // Nothing is written to the database — only favourites the user stars persist.
+// Fetch a .m3u playlist (through the CORS proxy in raw mode) and map its
+// entries to station objects. `limit` caps the result (0 = no cap). Shared by
+// the browse view (loadM3URadio) and the unified-search index (sources.js).
+export async function fetchM3UStations(rawUrl, limit = 500) {
+    const text = await (await fetch(getProxiedUrl(rawUrl, true))).text();
+    let entries = parseM3U(text).filter(s => s.url && /^https?:/i.test(s.url));
+    // Some genres hold thousands of entries; cap so the DOM stays responsive
+    // (favourites still persist individually).
+    if (limit) entries = entries.slice(0, limit);
+    return entries.map(s => ({
+        stationuuid: 'm3u_' + s.url,
+        name: s.name,
+        url: s.url,
+        url_resolved: s.url,
+        favicon: s.favicon || '',
+        tags: '',
+        country: 'M3U Radio',
+        bitrate: 0,
+        codec: '',
+        hls: 0
+    }));
+}
+
 export async function loadM3URadio(rawUrl) {
     state.searchPage.active = false;
     dom.stationsList.innerHTML = '<div class="loading">Loading playlist…</div>';
     try {
-        const text = await (await fetch(getProxiedUrl(rawUrl, true))).text();
-        const stations = parseM3U(text)
-            .filter(s => s.url && /^https?:/i.test(s.url))
-            // Some genres hold thousands of entries; cap the rendered list so
-            // the DOM stays responsive (favourites still persist individually).
-            .slice(0, 500)
-            .map(s => ({
-                stationuuid: 'm3u_' + s.url,
-                name: s.name,
-                url: s.url,
-                url_resolved: s.url,
-                favicon: s.favicon || '',
-                tags: '',
-                country: 'M3U Radio',
-                bitrate: 0,
-                codec: '',
-                hls: 0
-            }));
+        const stations = await fetchM3UStations(rawUrl);
         if (stations.length === 0) {
             dom.stationsList.innerHTML = '<div class="loading-hint">Playlist is empty</div>';
             state.currentStationsList = [];
