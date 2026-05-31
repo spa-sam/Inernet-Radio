@@ -41,14 +41,15 @@ export async function getM3UGenres(forceRefresh = false) {
     }
 }
 
-// Fetch one genre playlist on demand (through the CORS proxy in raw mode so the
-// .m3u text is returned verbatim), parse it and show it as a transient list.
-// Nothing is written to the database — only favourites the user stars persist.
 // Fetch a .m3u playlist (through the CORS proxy in raw mode) and map its
 // entries to station objects. `limit` caps the result (0 = no cap). Shared by
 // the browse view (loadM3URadio) and the unified-search index (sources.js).
 export async function fetchM3UStations(rawUrl, limit = 500) {
-    const text = await (await fetch(getProxiedUrl(rawUrl, true))).text();
+    const res = await fetch(getProxiedUrl(rawUrl, true));
+    // The local proxy returns 502 when it cannot resolve the upstream; treat
+    // any non-OK response as a failure rather than parsing the error body.
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
     let entries = parseM3U(text).filter(s => s.url && /^https?:/i.test(s.url));
     // Some genres hold thousands of entries; cap so the DOM stays responsive
     // (favourites still persist individually).

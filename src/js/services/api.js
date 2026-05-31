@@ -49,9 +49,15 @@ export async function loadFilterOptions() {
     const fill = (datalistId, names) => {
         const list = document.getElementById(datalistId);
         if (!list) return;
-        list.innerHTML = names
-            .map((n) => `<option value="${n.replace(/"/g, '&quot;')}"></option>`)
-            .join('');
+        // Build options with DOM APIs (not innerHTML): country/tag/language
+        // names are community-submitted to Radio Browser, so HTML in a name
+        // must never be parsed — that would be an XSS (→ RCE in Tauri) vector.
+        list.replaceChildren();
+        for (const n of names) {
+            const opt = document.createElement('option');
+            opt.value = n;
+            list.appendChild(opt);
+        }
     };
 
     try {
