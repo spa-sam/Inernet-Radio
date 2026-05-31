@@ -863,6 +863,33 @@ body {
     background: rgba(255, 255, 255, 0.04);
     color: var(--text-muted);
 }
+.preset-m3u {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+}
+
+/* M3U Radio genre picker */
+.m3u-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+.m3u-bar.hidden { display: none; }
+.m3u-bar label { font-size: 0.75rem; color: var(--text-muted); flex-shrink: 0; }
+.m3u-bar #m3u-genre-select { flex: 1; min-width: 0; }
+.m3u-refresh-btn {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: var(--transition);
+}
+.m3u-refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
 
 /* Recently played ------------------------------------------------------- */
 .recently-played-section { flex-shrink: 0; }

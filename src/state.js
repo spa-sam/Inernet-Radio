@@ -88,6 +88,7 @@ export const state = {
         recordSplit: false,
         alarmEnabled: false,
         alarmTime: '07:00',
+        m3uGenres: null,
         favoritesOrder: [],
         customOrder: []
     }
