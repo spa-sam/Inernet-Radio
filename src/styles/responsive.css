@@ -1,0 +1,123 @@
+/* ==========================================================================
+   WIDE VIEW - two-column layout
+   ========================================================================== */
+.container.wide .brand { display: flex; }
+.container.wide .tabs { flex: 1; justify-content: center; }
+.container.wide .tab { flex: 0 0 auto; min-width: 150px; }
+
+.container.wide #tab-radio { overflow: hidden; }
+.container.wide .radio-layout {
+    flex-direction: row;
+    align-items: stretch;
+    overflow: hidden;
+    gap: 1.1rem;
+}
+.container.wide .radio-main {
+    width: 44%;
+    max-width: 510px;
+    min-width: 380px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.container.wide .radio-side {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+.container.wide .stations-section { flex: 1; min-height: 0; }
+.container.wide .stations-list {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+/* Player card grows into a full studio panel */
+.container.wide .player-section { padding: 1.5rem; gap: 1.25rem; }
+
+.container.wide .player-stage {
+    flex-direction: row;
+    align-items: center;
+    gap: 1.1rem;
+}
+.container.wide .station-logo-container { width: 116px; height: 116px; }
+.container.wide #station-name { font-size: 1.9rem; }
+.container.wide .station-sub { display: block; }
+.container.wide .now-eyebrow { font-size: 0.7rem; }
+
+/* Track shown as a real card */
+.container.wide .track-card {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 0.7rem;
+}
+.container.wide .track-card-thumb { display: block; }
+.container.wide .track-card-label { display: block; }
+.container.wide .track-copy-btn,
+.container.wide .track-youtube-btn { display: flex; }
+
+/* Meta pills hidden in wide (info shown via sub + quality) */
+.container.wide .station-meta { display: none; }
+
+/* Transport becomes a stacked block: spectrum on top, controls below */
+.container.wide .player-transport {
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+.container.wide .spectrum-panel {
+    flex: 1 1 100%;
+    order: -1;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 0.7rem 0.8rem;
+    gap: 6px;
+}
+.container.wide .spectrum-head { display: flex; }
+.container.wide .spectrum-axis { display: flex; }
+.container.wide .visualizer {
+    height: 120px;
+    background: transparent;
+    border: none;
+}
+.container.wide .transport-info { display: flex; }
+.container.wide .play-btn { width: 66px; height: 66px; }
+.container.wide .play-btn svg { width: 30px; height: 30px; }
+.container.wide .nav-btn { width: 38px; height: 38px; }
+
+/* Center custom/settings content in wide view */
+.container.wide #tab-custom,
+.container.wide #tab-settings { padding: 1.25rem; }
+.container.wide .custom-section,
+.container.wide .settings-section,
+.container.wide .export-section {
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+}
+
+/* ==========================================================================
+   COMPACT WIDGET MODE (always-on-top mini player)
+   The widget keeps the .wide class while active, so it reuses the full
+   studio player card. Only the app header and the search / stations
+   sidebar are dropped.
+   ========================================================================== */
+.container.compact {
+    max-width: 100%;
+    border: none;
+}
+.container.compact .app-header,
+.container.compact .radio-side,
+.container.compact #enter-compact-btn {
+    display: none !important;
+}
+/* The player column fills the whole widget width */
+.container.compact .radio-main {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    padding: 0;
+}
+.container.compact #exit-compact-btn { display: flex; }
+

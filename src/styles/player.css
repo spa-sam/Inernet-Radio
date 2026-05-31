@@ -1,0 +1,484 @@
+/* Window controls ------------------------------------------------------- */
+.window-controls {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 7px;
+    z-index: 10;
+}
+
+.control-circle-btn {
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: rgba(0, 0, 0, 0.3);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+.control-circle-btn svg { width: 12px; height: 12px; }
+.control-circle-btn:hover {
+    background: var(--surface-3);
+    color: var(--text);
+    transform: scale(1.05);
+}
+.control-circle-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow);
+}
+/* exit-compact button only visible inside compact widget */
+#exit-compact-btn { display: none; }
+
+/* Player card ----------------------------------------------------------- */
+.player-section {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1.15rem;
+    position: relative;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Stage: logo + headline */
+.player-stage {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+}
+
+.station-logo-container {
+    position: relative;
+    width: 92px;
+    height: 92px;
+    flex-shrink: 0;
+}
+.station-logo {
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-md);
+    object-fit: cover;
+    background: #100e16;
+    border: 1px solid var(--line);
+    position: relative;
+    z-index: 2;
+}
+.station-logo.hidden { display: none; }
+.station-logo-glow {
+    position: absolute;
+    inset: 6px;
+    background: var(--accent);
+    filter: blur(20px);
+    opacity: 0.28;
+    z-index: 1;
+    border-radius: var(--radius-md);
+}
+
+.player-headline {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.now-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+}
+.container.playing .live-dot {
+    background: var(--live);
+    box-shadow: 0 0 8px var(--live-glow);
+    animation: live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes live-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.live-badge, .live-badge-sm {
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: none;
+}
+.container.playing .live-badge,
+.container.playing .live-badge-sm { display: inline-block; }
+
+.station-name-row { display: block; overflow: hidden; }
+#station-name {
+    font-size: 1.7rem;
+    font-weight: 800;
+    letter-spacing: -1px;
+    white-space: nowrap;
+    display: inline-block;
+    color: var(--text);
+    will-change: transform;
+}
+#station-name.marquee {
+    animation: marquee-scroll 9s ease-in-out infinite alternate;
+}
+@keyframes marquee-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(var(--marquee-distance, 0)); }
+}
+
+.station-sub {
+    display: none;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+/* Track card ------------------------------------------------------------ */
+.track-card {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+}
+.track-card-thumb {
+    display: none;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-sm);
+    background: #100e16 center/cover no-repeat;
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+}
+.track-card-body { flex: 1; min-width: 0; overflow: hidden; }
+.track-card-label {
+    display: none;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+}
+
+.now-playing-track {
+    font-size: 0.9rem;
+    color: var(--accent-2);
+    font-weight: 600;
+    min-height: 1.25em;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: none;
+    will-change: transform;
+}
+/* Scroll the track line when it overflows its card */
+.now-playing-track.marquee {
+    animation: marquee-scroll 9s ease-in-out infinite alternate;
+}
+.now-playing-track::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+}
+.now-playing-track:empty::before { display: none; }
+.now-playing-track.status-line {
+    color: var(--text-muted);
+    animation: status-pulse 1.4s ease-in-out infinite;
+}
+.now-playing-track.status-line::before { background: var(--warn); }
+.now-playing-track.status-error { color: var(--accent); }
+.now-playing-track.status-error::before { background: var(--accent); }
+@keyframes status-pulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+}
+
+/* Track action buttons (copy name / open on YouTube) */
+.track-copy-btn,
+.track-youtube-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border: none;
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+.track-copy-btn svg,
+.track-youtube-btn svg { width: 18px; height: 18px; }
+.track-copy-btn:hover { background: var(--surface-3); color: var(--text); }
+.track-copy-btn.copied { background: var(--accent-soft); color: var(--accent); }
+.track-youtube-btn:hover { background: var(--surface-3); color: #ff3d3d; }
+
+/* Meta tags ------------------------------------------------------------- */
+.station-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+.meta-item {
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0.2rem 0.45rem;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+}
+.meta-item.hidden { display: none; }
+
+/* Transport ------------------------------------------------------------- */
+.player-transport {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+
+/* Spectrum panel */
+.spectrum-panel {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.spectrum-head {
+    display: none;
+    justify-content: space-between;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+.spectrum-title { color: var(--text-muted); }
+.spectrum-db { color: var(--text-dim); }
+.spectrum-axis {
+    display: none;
+    justify-content: space-between;
+    font-size: 0.58rem;
+    font-weight: 600;
+    color: var(--text-dim);
+}
+.visualizer {
+    width: 100%;
+    height: 64px;
+    border-radius: var(--radius-md);
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--line);
+    cursor: pointer;
+}
+.visualizer.hidden { display: none; }
+
+/* Transport buttons */
+.transport-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    order: -1; /* keep playback controls left of the spectrum */
+}
+.nav-btn {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+.nav-btn svg { width: 15px; height: 15px; }
+.nav-btn:hover { background: var(--surface-3); color: var(--text); }
+.record-btn svg { color: #e74c3c; fill: #e74c3c; }
+.record-btn.recording { border-color: #e74c3c; background: rgba(231, 76, 60, 0.15); }
+.record-btn.recording svg { animation: rec-pulse 1s ease-in-out infinite; }
+@keyframes rec-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.play-btn {
+    width: 58px;
+    height: 58px;
+    border: none;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-2), var(--accent-deep));
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 20px var(--accent-glow);
+    transition: var(--transition);
+}
+.play-btn svg { width: 26px; height: 26px; }
+.play-btn:hover { transform: scale(1.07); box-shadow: 0 6px 26px var(--accent); }
+.play-btn.playing svg { width: 22px; height: 22px; }
+
+/* Transport info (wide only) */
+.transport-info {
+    display: none;
+    flex-direction: column;
+    gap: 3px;
+    flex-shrink: 0;
+}
+.transport-time {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+}
+.transport-quality {
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+/* Live recording indicator (elapsed time + file size) */
+.transport-rec {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #e74c3c;
+}
+.transport-rec.hidden { display: none; }
+.transport-rec .rec-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #e74c3c;
+    animation: rec-pulse 1s ease-in-out infinite;
+}
+
+/* Volume ---------------------------------------------------------------- */
+/* Horizontal volume bar placed below the transport controls */
+.volume-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.5rem 0.7rem;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+}
+
+.volume-mute-btn {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+.volume-mute-btn:hover { background: var(--surface-3); color: var(--text); }
+.volume-mute-btn svg { width: 17px; height: 17px; }
+.vol-icon-muted { display: none; }
+.volume-bar.muted .vol-icon-high { display: none; }
+.volume-bar.muted .vol-icon-muted { display: block; }
+.volume-bar.muted .volume-mute-btn { color: var(--accent); }
+
+/* Range slider — fill driven by the --vol custom property */
+.volume-range {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    min-width: 0;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(
+        to right,
+        var(--accent-2) 0%,
+        var(--accent) var(--vol, 70%),
+        rgba(255, 255, 255, 0.09) var(--vol, 70%),
+        rgba(255, 255, 255, 0.09) 100%
+    );
+    outline: none;
+    cursor: pointer;
+}
+.volume-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid var(--accent);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+    transition: transform 0.12s ease;
+}
+.volume-range::-webkit-slider-thumb:hover { transform: scale(1.18); }
+.volume-range:active::-webkit-slider-thumb { transform: scale(1.25); }
+.volume-bar.muted .volume-range {
+    background: linear-gradient(
+        to right,
+        var(--text-dim) 0%,
+        var(--text-dim) var(--vol, 70%),
+        rgba(255, 255, 255, 0.09) var(--vol, 70%),
+        rgba(255, 255, 255, 0.09) 100%
+    );
+}
+.volume-bar.muted .volume-range::-webkit-slider-thumb { border-color: var(--text-dim); }
+
+.volume-value {
+    flex-shrink: 0;
+    width: 38px;
+    text-align: right;
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+}
+

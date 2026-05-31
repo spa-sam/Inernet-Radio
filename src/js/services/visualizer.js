@@ -1,9 +1,9 @@
 // visualizer.js — canvas spectrum / waveform rendering driven by the analyser.
 
-import { state } from './state.js';
-import { dom } from './dom.js';
-import { adjustBrightness } from './util.js';
-import { saveSetting } from './db.js';
+import { state } from '../core/state.js';
+import { dom } from '../core/dom.js';
+import { adjustBrightness } from '../core/util.js';
+import { saveSetting } from '../core/db.js';
 import { ensureAudioGraph } from './audio.js';
 
 function drawVisualization() {

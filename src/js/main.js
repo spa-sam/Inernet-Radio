@@ -3,20 +3,20 @@
 // saved settings, renders the initial UI, and binds all DOM event listeners.
 // All behaviour lives in the feature modules; this file only coordinates.
 
-import { state } from './state.js';
-import { dom } from './dom.js';
-import { APP_VERSION } from './constants.js';
-import { hasTauriApi, generatePlaceholderLogo } from './util.js';
-import { loadApiServers, loadFilterOptions } from './api.js';
+import { state } from './core/state.js';
+import { dom } from './core/dom.js';
+import { APP_VERSION } from './core/constants.js';
+import { hasTauriApi, generatePlaceholderLogo } from './core/util.js';
+import { loadApiServers, loadFilterOptions } from './services/api.js';
 import {
     openDatabase,
     loadAllDataFromDb,
     loadAllDataFromStorage,
     saveSetting,
     applySavedOrder
-} from './db.js';
-import { buildEqUi, toggleEq, applyEqPreset, toggleNormalization } from './audio.js';
-import { toggleVisualizer, changeVisualizerColor, cycleVisualizerStyle } from './visualizer.js';
+} from './core/db.js';
+import { buildEqUi, toggleEq, applyEqPreset, toggleNormalization } from './services/audio.js';
+import { toggleVisualizer, changeVisualizerColor, cycleVisualizerStyle } from './services/visualizer.js';
 import {
     initProxy,
     setVolume,
@@ -31,7 +31,7 @@ import {
     requestNotificationPermission,
     handleStreamDrop,
     setConnectionState
-} from './player.js';
+} from './features/player.js';
 import {
     searchStations,
     loadMoreStations,
@@ -49,7 +49,7 @@ import {
     updateCurrentStationInfo,
     exportFavorites,
     importStations
-} from './stations.js';
+} from './features/stations.js';
 import {
     setStationName,
     updateMetadata,
@@ -67,7 +67,7 @@ import {
     copyCurrentTrack,
     openTrackOnYouTube,
     toast
-} from './ui.js';
+} from './ui/ui.js';
 
 // Load persisted data from SQLite (or localStorage fallback) into shared state.
 async function initDatabase() {

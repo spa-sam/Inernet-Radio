@@ -1,0 +1,176 @@
+/* Custom tab forms ------------------------------------------------------ */
+.custom-section h3,
+.settings-section h3,
+.export-section h3 {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--accent-2);
+    margin: 1.25rem 0 0.55rem 0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.custom-section h3:first-child,
+.settings-section h3:first-child { margin-top: 0; }
+
+.current-station-empty {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 0.85rem;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px dashed var(--line);
+    border-radius: var(--radius-md);
+}
+.current-station-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--line);
+    padding: 0.85rem;
+    border-radius: var(--radius-md);
+}
+.current-station-form .current-station-logo {
+    width: 54px;
+    height: 54px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    align-self: center;
+    background: #100e16;
+    border: 1px solid var(--line);
+}
+.current-station-form input {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    padding: 0.5rem 0.75rem;
+    color: var(--text);
+    font-size: 0.85rem;
+    border-radius: var(--radius-sm);
+    outline: none;
+}
+.current-station-form .btn-export {
+    padding: 0.55rem;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.85rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+}
+.current-station-form .btn-export:hover { background: var(--accent-deep); }
+
+.custom-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+.custom-form input {
+    padding: 0.65rem 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.9rem;
+    outline: none;
+    transition: var(--transition);
+}
+.custom-form input::placeholder { color: var(--text-dim); }
+.custom-form input:focus {
+    background: var(--surface-2);
+    border-color: var(--accent);
+}
+.custom-form-buttons { display: flex; gap: 0.5rem; }
+.custom-form-buttons button {
+    flex: 1;
+    padding: 0.65rem;
+    border: none;
+    border-radius: var(--radius-md);
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.custom-form-buttons button:hover { background: var(--accent-deep); }
+.custom-form-buttons .btn-secondary {
+    background: var(--surface-2);
+    color: var(--text-muted);
+    border: 1px solid var(--line);
+}
+.custom-form-buttons .btn-secondary:hover { background: var(--surface-3); color: var(--text); }
+
+.export-section {
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
+    margin-top: 1rem;
+}
+.export-buttons { display: flex; gap: 0.5rem; }
+.export-buttons button {
+    flex: 1;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.export-buttons button:hover {
+    background: var(--surface-2);
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+/* Check-for-updates button (About section) */
+/* Update panel: single action button + status + progress bar */
+.update-panel { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+#update-action-btn {
+    padding: 0.55rem 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+#update-action-btn:hover {
+    background: var(--surface-3);
+    color: var(--text);
+    border-color: var(--accent);
+}
+#update-action-btn:disabled { opacity: 0.6; cursor: default; }
+/* Emphasised state for the Install / Restart actions */
+#update-action-btn.accent {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+}
+#update-action-btn.accent:hover { background: var(--accent); color: #fff; }
+.update-status { font-size: 0.75rem; color: var(--text-muted); }
+.update-status:empty { display: none; }
+.update-status.ok { color: var(--accent); }
+.update-status.error { color: #e74c3c; }
+.update-progress-wrap {
+    width: 100%;
+    max-width: 360px;
+    height: 8px;
+    background: var(--surface-3);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.update-progress-wrap.hidden { display: none; }
+.update-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.2s ease;
+}
+

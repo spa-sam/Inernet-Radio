@@ -2,10 +2,10 @@
 // The graph is created once on first playback and is independent of the
 // visualizer, so the equalizer works even when the visualizer is off.
 
-import { state } from './state.js';
-import { dom } from './dom.js';
-import { EQ_BANDS, EQ_PRESETS } from './constants.js';
-import { saveSetting } from './db.js';
+import { state } from '../core/state.js';
+import { dom } from '../core/dom.js';
+import { EQ_BANDS, EQ_PRESETS } from '../core/constants.js';
+import { saveSetting } from '../core/db.js';
 
 // Build the audio graph once. createMediaElementSource can only be called
 // once per media element, hence the idempotent guard.

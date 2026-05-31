@@ -2,14 +2,14 @@
 // modes (compact / narrow / wide), sleep timer, and the track copy / YouTube
 // actions. These functions only touch the DOM and shared state.
 
-import { state } from './state.js';
-import { dom } from './dom.js';
-import { APP_VERSION, COPY_ICON_SVG, CHECK_ICON_SVG } from './constants.js';
-import { hasTauriApi } from './util.js';
-import { saveSetting } from './db.js';
-import { refreshVisualizerSize } from './visualizer.js';
-import { stopStation, selectStation } from './player.js';
-import { addToTrackHistory } from './stations.js';
+import { state } from '../core/state.js';
+import { dom } from '../core/dom.js';
+import { APP_VERSION, COPY_ICON_SVG, CHECK_ICON_SVG } from '../core/constants.js';
+import { hasTauriApi } from '../core/util.js';
+import { saveSetting } from '../core/db.js';
+import { refreshVisualizerSize } from '../services/visualizer.js';
+import { stopStation, selectStation } from '../features/player.js';
+import { addToTrackHistory } from '../features/stations.js';
 
 // Non-blocking toast notification (replaces native alert)
 export function toast(message, type = 'info', duration = 3200) {
