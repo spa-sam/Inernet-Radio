@@ -38,3 +38,10 @@ export const MAX_RECONNECT = 3;
 
 // Volume fade duration (ms) for smooth play / stop / sleep-timer transitions
 export const FADE_DURATION = 600;
+
+// M3U Radio source (junguler/m3u-radio-music-playlists). The genre list is
+// fetched from the GitHub contents API and cached; genre playlists are pulled
+// on demand. CACHE_TTL controls how long the cached genre list stays valid.
+export const M3U_CONTENTS_API =
+    'https://api.github.com/repos/junguler/m3u-radio-music-playlists/contents';
+export const M3U_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days

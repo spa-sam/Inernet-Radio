@@ -37,6 +37,8 @@ import {
     loadMoreStations,
     loadPopularStations,
     loadSomaFM,
+    getM3UGenres,
+    loadM3URadio,
     showFavorites,
     addCustomStation,
     saveEditedStation,
@@ -300,15 +302,44 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
         document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
 
+        // The M3U genre picker is only shown while the M3U source is active
+        if (dom.m3uBar) dom.m3uBar.classList.toggle('hidden', genre !== 'm3u');
+
         if (genre === 'favorites') {
             showFavorites();
         } else if (genre === 'somafm') {
             loadSomaFM();
+        } else if (genre === 'm3u') {
+            openM3URadio();
         } else {
             searchStations('', genre);
         }
     });
 });
+
+// M3U Radio: populate the genre dropdown (cached) and load the selected genre.
+async function openM3URadio(forceRefresh = false) {
+    if (!dom.m3uGenreSelect) return;
+    dom.stationsList.innerHTML = '<div class="loading">Loading genres…</div>';
+    try {
+        const genres = await getM3UGenres(forceRefresh);
+        if (!dom.m3uGenreSelect.options.length || forceRefresh) {
+            dom.m3uGenreSelect.innerHTML = genres
+                .map(g => `<option value="${g.url}">${g.label}</option>`)
+                .join('');
+        }
+        const url = dom.m3uGenreSelect.value || (genres[0] && genres[0].url);
+        if (url) await loadM3URadio(url);
+    } catch (e) {
+        dom.stationsList.innerHTML = '<div class="loading-hint">Failed to load genre list</div>';
+    }
+}
+if (dom.m3uGenreSelect) {
+    dom.m3uGenreSelect.addEventListener('change', () => loadM3URadio(dom.m3uGenreSelect.value));
+}
+if (dom.m3uRefreshBtn) {
+    dom.m3uRefreshBtn.addEventListener('click', () => openM3URadio(true));
+}
 
 // Custom stations
 dom.addCustomBtn.addEventListener('click', addCustomStation);

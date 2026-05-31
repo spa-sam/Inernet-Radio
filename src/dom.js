@@ -45,6 +45,9 @@ export const dom = {
     filterCodec: byId('filter-codec'),
     filterLanguage: byId('filter-language'),
     filterOrder: byId('filter-order'),
+    m3uBar: byId('m3u-bar'),
+    m3uGenreSelect: byId('m3u-genre-select'),
+    m3uRefreshBtn: byId('m3u-refresh-btn'),
 
     // Recently played
     recentlyPlayedSection: byId('recently-played-section'),

@@ -490,7 +490,8 @@ export function updatePlayButton() {
 function reportStationClick(station) {
     if (!station || !station.stationuuid) return;
     const uuid = station.stationuuid;
-    if (uuid.startsWith('custom_') || uuid.startsWith('preview_') || uuid.startsWith('somafm_')) return;
+    if (uuid.startsWith('custom_') || uuid.startsWith('preview_') ||
+        uuid.startsWith('somafm_') || uuid.startsWith('m3u_')) return;
 
     apiFetch(`/url/${uuid}`).catch(e => console.warn('Click report failed:', e.message));
 }

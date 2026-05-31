@@ -57,6 +57,8 @@
   - Локальний `npm run tauri build` тепер потребує env `TAURI_SIGNING_PRIVATE_KEY` (через `createUpdaterArtifacts`).
 - [x] **macOS у релізі**: `release.yml` розширено в matrix `windows-latest` + `macos-latest` (`--target universal-apple-darwin`); `bundle.targets: "all"`. Обидві платформи кладуться в один реліз, `latest.json` обʼєднує цілі.
   - Apple-нотаризація поки **не налаштована** → macOS Gatekeeper попереджатиме при першому запуску (правою → Open). Додамо за наявності Apple Developer ID (`APPLE_CERTIFICATE`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`).
+- [x] **Двокроковий апдейтер**: `check_for_updates` лише перевіряє; `install_update` качає з подіями `update-progress`; `restart_app` перезапускає. Одна кнопка в About проходить Check → Install vX (прогрес-бар) → Restart now.
+- [x] **Джерело «M3U Radio»** (`junguler/m3u-radio-music-playlists`): пресет із випадаючим списком жанрів. Список жанрів тягнеться з GitHub contents API і кешується в БД (TTL 7 днів, кнопка ↻). Вміст жанру тягнеться на льоту через CORS-проксі (raw), парситься (`parseM3U`, тепер із `tvg-logo`), показується тимчасово (до 500), у БД не пишеться — лише обране. Без нового Rust/дозволів.
 
 ## Порядок виконання
 

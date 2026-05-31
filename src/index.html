@@ -236,6 +236,7 @@
                         <div class="presets">
                             <button class="preset-btn preset-favorites" data-genre="favorites">★ Favorites</button>
                             <button class="preset-btn preset-somafm" data-genre="somafm">SomaFM</button>
+                            <button class="preset-btn preset-m3u" data-genre="m3u">M3U Radio</button>
                             <button class="preset-btn" data-genre="pop">Pop</button>
                             <button class="preset-btn" data-genre="dance">Dance</button>
                             <button class="preset-btn" data-genre="rock">Rock</button>
@@ -245,6 +246,12 @@
                             <button class="preset-btn" data-genre="classical">Classic</button>
                             <button class="preset-btn" data-genre="jazz">Jazz</button>
                             <button class="preset-btn" data-genre="news">News</button>
+                        </div>
+
+                        <div class="m3u-bar hidden" id="m3u-bar">
+                            <label for="m3u-genre-select">Genre</label>
+                            <select id="m3u-genre-select" class="custom-select"></select>
+                            <button id="m3u-refresh-btn" class="m3u-refresh-btn" title="Refresh genre list">↻</button>
                         </div>
                     </div>
 
