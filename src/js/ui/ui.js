@@ -220,6 +220,8 @@ export async function toggleAlwaysOnTop() {
 export async function applyViewMode(wide, isInit = false) {
     state.settings.wideMode = wide;
     dom.appContainer.classList.toggle('wide', wide);
+    // Reset the scroll-collapsed player when switching views (re-collapses on scroll)
+    if (dom.radioLayout) dom.radioLayout.classList.remove('player-collapsed');
 
     // Sync the header segmented switch and the settings dropdown
     if (dom.viewSwitch) {
@@ -440,4 +442,70 @@ export function openTrackOnYouTube() {
     const trackText = (dom.nowPlayingTrack.textContent || '').replace(/^[\s♪•]+/, '').trim();
     const query = trackText || (state.currentStation ? state.currentStation.name : '');
     openYouTubeSearch(query);
+}
+
+// --- Resizable player column (wide view) ------------------------------------
+
+// Player column min width and the minimum the list column must keep, plus the
+// divider width — used to clamp the drag so neither side gets crushed.
+const SPLIT_MIN_MAIN = 360;
+const SPLIT_MIN_SIDE = 300;
+const SPLIT_WIDTH = 16;
+
+function clampMainWidth(px, layoutWidth) {
+    const max = Math.max(SPLIT_MIN_MAIN, layoutWidth - SPLIT_MIN_SIDE - SPLIT_WIDTH);
+    return Math.round(Math.max(SPLIT_MIN_MAIN, Math.min(px, max)));
+}
+
+// Apply the saved player-column width (set as a CSS var the wide layout reads).
+export function applyRadioMainWidth() {
+    const w = state.settings.radioMainWidth;
+    if (w && dom.appContainer) {
+        dom.appContainer.style.setProperty('--radio-main-width', w + 'px');
+    }
+}
+
+// Wire the divider so dragging it resizes the player column (wide view only).
+export function setupRadioSplitter() {
+    const { radioSplitter: splitter, radioLayout: layout, appContainer } = dom;
+    if (!splitter || !layout || !appContainer) return;
+
+    let dragging = false;
+
+    const onMove = (e) => {
+        if (!dragging) return;
+        const rect = layout.getBoundingClientRect();
+        const px = clampMainWidth(e.clientX - rect.left, rect.width);
+        appContainer.style.setProperty('--radio-main-width', px + 'px');
+    };
+
+    const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.classList.remove('resizing-col');
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        // Persist the actual rendered width (after min-width clamping).
+        const px = dom.radioMain ? Math.round(dom.radioMain.getBoundingClientRect().width) : 0;
+        if (px) {
+            state.settings.radioMainWidth = px;
+            saveSetting('radioMainWidth', px);
+        }
+    };
+
+    splitter.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        dragging = true;
+        document.body.classList.add('resizing-col');
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    });
+
+    // Re-clamp on window resize so an absolute width can't crush the list.
+    window.addEventListener('resize', () => {
+        const w = state.settings.radioMainWidth;
+        const rect = layout.getBoundingClientRect();
+        if (!w || !rect.width) return;
+        appContainer.style.setProperty('--radio-main-width', clampMainWidth(w, rect.width) + 'px');
+    });
 }

@@ -2023,7 +2023,7 @@ dependencies = [
 
 [[package]]
 name = "internet-radio"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "native-tls",
  "percent-encoding",

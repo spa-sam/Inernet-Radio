@@ -165,9 +165,14 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    /* Don't let the browser auto-adjust scrollTop when the sticky player
+       collapses/expands — scroll anchoring fights the collapse and causes a
+       judder loop near the threshold. */
+    overflow-anchor: none;
     padding: 1rem;
     gap: 1rem;
 }
+.radio-layout * { overflow-anchor: none; }
 
 .radio-main { flex-shrink: 0; }
 .radio-side {
@@ -176,4 +181,9 @@
     gap: 0.85rem;
     min-height: 0;
 }
+
+/* Resize divider — only shown in the wide two-column view (see responsive.css) */
+.radio-splitter { display: none; }
+/* While dragging the divider, suppress text selection and force the cursor */
+body.resizing-col { cursor: col-resize; user-select: none; }
 

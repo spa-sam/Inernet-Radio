@@ -38,6 +38,8 @@ export const dom = {
     appContainer: byId('app-container'),
     playerSection: document.querySelector('.player-section'),
     radioLayout: document.querySelector('.radio-layout'),
+    radioMain: byId('radio-main'),
+    radioSplitter: byId('radio-splitter'),
 
     // Search filters panel
     filtersToggleBtn: byId('filters-toggle-btn'),

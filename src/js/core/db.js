@@ -150,7 +150,9 @@ export async function loadAllDataFromDb() {
             name: row.name,
             url: row.url,
             favicon: row.favicon,
-            country: 'Recently played'
+            // No real country is stored for recents; leave empty so the player
+            // doesn't show a misleading "Recently played" country pill.
+            country: ''
         }));
 
         const historyRows = await db.select(

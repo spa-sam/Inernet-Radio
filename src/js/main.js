@@ -16,7 +16,7 @@ import {
     applySavedOrder
 } from './core/db.js';
 import { buildEqUi, toggleEq, applyEqPreset, toggleNormalization } from './services/audio.js';
-import { toggleVisualizer, changeVisualizerColor, cycleVisualizerStyle } from './services/visualizer.js';
+import { toggleVisualizer, changeVisualizerColor, cycleVisualizerStyle, refreshVisualizerSize } from './services/visualizer.js';
 import {
     initProxy,
     setVolume,
@@ -78,6 +78,8 @@ import {
     initAlarm,
     copyCurrentTrack,
     openTrackOnYouTube,
+    applyRadioMainWidth,
+    setupRadioSplitter,
     toast
 } from './ui/ui.js';
 
@@ -144,6 +146,10 @@ async function init() {
 
     // Apply narrow / wide layout
     applyViewMode(state.settings.wideMode, true);
+
+    // Restore the saved player-column width and enable the resize divider
+    applyRadioMainWidth();
+    setupRadioSplitter();
 
     // Apply compact mode with window resize
     if (state.settings.compactMode) {
@@ -265,14 +271,39 @@ dom.filtersToggleBtn.addEventListener('click', () => {
 // Infinite scroll: load the next page when the list nears the bottom. The
 // scrolling element differs between layouts (the whole radio-layout in narrow
 // view, the list itself in wide view), so listen on both.
+// Collapse / expand the player (instant — no animation). overflow-anchor:none
+// on the scroll container keeps the toggle from juddering near the threshold.
+function setPlayerCollapsed(collapsed) {
+    if (!dom.radioLayout) return;
+    if (dom.radioLayout.classList.contains('player-collapsed') === collapsed) return;
+    dom.radioLayout.classList.toggle('player-collapsed', collapsed);
+    refreshVisualizerSize(); // spectrum canvas resizes for the mini / full layout
+}
+
 function onListScroll(e) {
     const el = e.currentTarget;
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 120) {
         loadMoreStations();
     }
+    // Narrow view: collapse the player into a sticky bar once scrolled down,
+    // and expand it again near the top (hysteresis avoids flicker at the edge).
+    if (el === dom.radioLayout) {
+        if (el.scrollTop > 60) setPlayerCollapsed(true);
+        else if (el.scrollTop < 20) setPlayerCollapsed(false);
+    }
 }
 dom.stationsList.addEventListener('scroll', onListScroll);
 if (dom.radioLayout) dom.radioLayout.addEventListener('scroll', onListScroll);
+
+// Click the collapsed mini-bar (anywhere but its controls) to scroll the list
+// back to the top, which expands the player again.
+if (dom.radioMain) {
+    dom.radioMain.addEventListener('click', (e) => {
+        if (!dom.radioLayout || !dom.radioLayout.classList.contains('player-collapsed')) return;
+        if (e.target.closest('button, input, canvas, a')) return; // let controls work
+        dom.radioLayout.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+}
 
 // Re-evaluate the marquees when the window is resized
 window.addEventListener('resize', () => {

@@ -162,6 +162,11 @@
     display: flex;
     align-items: center;
     gap: 0.7rem;
+    /* Subtle card around the track name + actions (like the wide view) */
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.6rem;
 }
 .track-card-thumb {
     display: none;
@@ -220,10 +225,11 @@
     50% { opacity: 1; }
 }
 
-/* Track action buttons (copy name / open on YouTube) */
+/* Track action buttons (copy name / open on YouTube) — shown next to the
+   track line in both narrow and wide views (hidden only in the collapsed bar) */
 .track-copy-btn,
 .track-youtube-btn {
-    display: none;
+    display: flex;
     align-items: center;
     justify-content: center;
     width: 38px;

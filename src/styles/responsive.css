@@ -10,14 +10,125 @@
     flex-direction: row;
     align-items: stretch;
     overflow: hidden;
-    gap: 1.1rem;
+    gap: 0;
 }
 .container.wide .radio-main {
-    width: 44%;
-    max-width: 510px;
-    min-width: 380px;
+    /* Width is user-adjustable via the divider; --radio-main-width is set on
+       the container by the splitter drag (falls back to the default split). */
+    width: var(--radio-main-width, 44%);
+    min-width: 360px;
     overflow-y: auto;
     padding-right: 4px;
+}
+
+/* Draggable divider between the player and the list (wide view) */
+.container.wide .radio-splitter {
+    display: block;
+    flex: 0 0 16px;
+    align-self: stretch;
+    position: relative;
+    cursor: col-resize;
+}
+.container.wide .radio-splitter::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 7px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--line);
+    transition: background 0.15s;
+}
+.container.wide .radio-splitter:hover::before,
+body.resizing-col .radio-splitter::before {
+    background: var(--accent);
+}
+
+/* ==========================================================================
+   NARROW VIEW - sticky player that collapses to a slim bar on scroll
+   ========================================================================== */
+.container:not(.wide) .radio-main {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+/* Collapsed: a compact two-row bar pinned while the list scrolls underneath.
+   Row 1 — logo + station name + transport buttons.
+   Row 2 — track title (if any) + mini spectrum + volume.
+   `.player-transport` becomes display:contents so its children (buttons,
+   spectrum) can be placed into separate grid cells. Stays under ~2× height. */
+.container:not(.wide) .radio-layout.player-collapsed .player-section {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+        "stage    stage    buttons"
+        "track    spectrum volume";
+    align-items: center;
+    column-gap: 0.6rem;
+    row-gap: 0.4rem;
+    padding: 0.5rem 0.7rem;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5);
+    cursor: pointer; /* click outside the controls to expand / scroll to top */
+}
+.container:not(.wide) .player-collapsed .window-controls,
+.container:not(.wide) .player-collapsed .station-meta,
+.container:not(.wide) .player-collapsed .transport-info,
+.container:not(.wide) .player-collapsed .now-eyebrow,
+.container:not(.wide) .player-collapsed .station-sub,
+.container:not(.wide) .player-collapsed .record-btn,
+.container:not(.wide) .player-collapsed .track-card-thumb,
+.container:not(.wide) .player-collapsed .track-card-label,
+.container:not(.wide) .player-collapsed .track-copy-btn,
+.container:not(.wide) .player-collapsed .track-youtube-btn,
+.container:not(.wide) .player-collapsed .volume-value {
+    display: none;
+}
+
+/* Row 1: logo + station name */
+.container:not(.wide) .player-collapsed .player-stage {
+    grid-area: stage;
+    min-width: 0;
+    gap: 0.6rem;
+}
+.container:not(.wide) .player-collapsed .station-logo-container,
+.container:not(.wide) .player-collapsed .station-logo {
+    width: 42px;
+    height: 42px;
+}
+.container:not(.wide) .player-collapsed .station-logo-glow { display: none; }
+.container:not(.wide) .player-collapsed #station-name { font-size: 1rem; }
+
+/* Let the transport's children flow into the grid cells */
+.container:not(.wide) .player-collapsed .player-transport { display: contents; }
+.container:not(.wide) .player-collapsed .transport-buttons {
+    grid-area: buttons;
+    gap: 0.35rem;
+}
+.container:not(.wide) .player-collapsed .play-btn { width: 40px; height: 40px; }
+.container:not(.wide) .player-collapsed .play-btn svg { width: 18px; height: 18px; }
+.container:not(.wide) .player-collapsed .nav-btn { width: 32px; height: 32px; }
+
+/* Row 2: track title (left, marquee), mini spectrum, volume */
+.container:not(.wide) .player-collapsed .track-card {
+    grid-area: track;
+    min-width: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    gap: 0;
+}
+.container:not(.wide) .player-collapsed .now-playing-track { font-size: 0.78rem; }
+.container:not(.wide) .player-collapsed .spectrum-panel {
+    grid-area: spectrum;
+    width: 90px;
+    flex: none;
+}
+.container:not(.wide) .player-collapsed .visualizer { height: 28px; }
+.container:not(.wide) .player-collapsed .volume-bar {
+    grid-area: volume;
+    width: 140px;
+    gap: 0.4rem;
 }
 .container.wide .radio-side {
     flex: 1;
@@ -109,6 +220,7 @@
 }
 .container.compact .app-header,
 .container.compact .radio-side,
+.container.compact .radio-splitter,
 .container.compact #enter-compact-btn {
     display: none !important;
 }

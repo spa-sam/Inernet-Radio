@@ -94,6 +94,7 @@ export const state = {
         sources: { radioBrowser: true, somafm: true, m3u: false, custom: true },
         somaCache: null,   // { list, fetchedAt } — SomaFM channels for local search
         m3uIndex: null,    // { list, fetchedAt } — aggregated M3U stations for search
+        radioMainWidth: null, // px width of the player column in wide view (resizable)
         favoritesOrder: [],
         customOrder: []
     }

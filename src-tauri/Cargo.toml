@@ -1,6 +1,6 @@
 [package]
 name = "internet-radio"
-version = "1.0.10"
+version = "1.0.11"
 edition = "2021"
 
 [build-dependencies]
