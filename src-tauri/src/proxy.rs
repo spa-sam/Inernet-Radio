@@ -13,7 +13,10 @@ use crate::metadata::{parse_stream_title, parse_url, LiveMetadata};
 pub(crate) struct ProxyPort(pub(crate) u16);
 
 // A boxed async stream — either a plain TCP or a TLS connection.
-pub(crate) trait AsyncStream: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send {}
+pub(crate) trait AsyncStream:
+    tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send
+{
+}
 impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> AsyncStream for T {}
 
 // Send the proxy response headers to the audio client (CORS-enabled)
