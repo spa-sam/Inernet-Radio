@@ -3,7 +3,8 @@
 
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
-import { generatePlaceholderLogo, getFaviconFromUrl, formatTimer } from '../../core/util.js';
+import { getFaviconFromUrl, formatTimer } from '../../core/util.js';
+import { applyLogo, resolveLogoSrc } from '../../core/favicon.js';
 import { saveSetting } from '../../core/db.js';
 import { apiFetch } from '../../services/api.js';
 import { ensureAudioGraph } from '../../services/audio.js';
@@ -237,17 +238,8 @@ export function selectStation(station, itemElement) {
     updateCurrentStationInfo();
 
     dom.stationLogo.classList.remove('hidden');
-    const logoSrc = station.favicon || generatePlaceholderLogo(station.name);
-    if (station.favicon) {
-        dom.stationLogo.src = station.favicon;
-        dom.stationLogo.onerror = function() {
-            this.src = generatePlaceholderLogo(station.name);
-            this.onerror = null;
-        };
-    } else {
-        dom.stationLogo.src = logoSrc;
-    }
-    if (dom.trackCardThumb) dom.trackCardThumb.style.backgroundImage = `url("${logoSrc}")`;
+    applyLogo(dom.stationLogo, station);
+    if (dom.trackCardThumb) dom.trackCardThumb.style.backgroundImage = `url("${resolveLogoSrc(station)}")`;
 
     document.querySelectorAll('.station-item').forEach(item => {
         item.classList.remove('active');
@@ -322,15 +314,7 @@ export function previewCustomUrl() {
     setStationName(name + ' (Test)');
 
     dom.stationLogo.classList.remove('hidden');
-    if (favicon) {
-        dom.stationLogo.src = favicon;
-        dom.stationLogo.onerror = function() {
-            this.src = generatePlaceholderLogo(name);
-            this.onerror = null;
-        };
-    } else {
-        dom.stationLogo.src = generatePlaceholderLogo(name);
-    }
+    applyLogo(dom.stationLogo, tempStation);
 
     updateCurrentStationInfo();
 

@@ -82,6 +82,15 @@ export function applyEqGains() {
 // Build the per-band sliders once and reflect the saved EQ state.
 export function buildEqUi() {
     if (!dom.eqBandsContainer) return;
+
+    // Migrate saved gains whose band count differs from the current set
+    // (e.g. upgrading from the older 5-band EQ): reset to flat.
+    if (!Array.isArray(state.settings.eqGains) ||
+        state.settings.eqGains.length !== EQ_BANDS.length) {
+        state.settings.eqGains = EQ_BANDS.map(() => 0);
+        saveSetting('eqGains', state.settings.eqGains);
+    }
+
     dom.eqBandsContainer.innerHTML = '';
 
     EQ_BANDS.forEach((band, i) => {

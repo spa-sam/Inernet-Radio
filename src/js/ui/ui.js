@@ -261,12 +261,10 @@ export function toggleViewMode(wide) {
     applyViewMode(wide);
 }
 
-// Sleep timer: stop playback automatically after the chosen number of minutes
-export function startSleepTimer(minutes) {
-    cancelSleepTimer();
-    if (!minutes || minutes <= 0) return;
-
-    state.sleepTimerEnd = Date.now() + minutes * 60 * 1000;
+// Start the countdown to an absolute end time (ms). Shared by the duration and
+// the "stop at time" modes; stopStation fades the volume out on expiry.
+function beginSleepTimer(endMs) {
+    state.sleepTimerEnd = endMs;
     dom.sleepTimerStatus.classList.remove('hidden');
     updateSleepTimerDisplay();
 
@@ -279,8 +277,27 @@ export function startSleepTimer(minutes) {
             updateSleepTimerDisplay();
         }
     }, 1000);
+}
 
+// Sleep timer: stop playback automatically after the chosen number of minutes.
+export function startSleepTimer(minutes) {
+    cancelSleepTimer();
+    if (dom.sleepUntilTime) dom.sleepUntilTime.value = ''; // the two modes are mutually exclusive
+    if (!minutes || minutes <= 0) return;
+    beginSleepTimer(Date.now() + minutes * 60 * 1000);
     toast(`Sleep timer: ${minutes} min`, 'success');
+}
+
+// Sleep timer: stop playback at an absolute clock time "HH:MM" (today if still
+// ahead, otherwise tomorrow).
+export function startSleepUntil(timeStr) {
+    cancelSleepTimer();
+    if (!timeStr) return;
+    if (dom.sleepTimerSelect) dom.sleepTimerSelect.value = '0'; // clear the duration mode
+    const target = nextAlarmTimestamp(timeStr);
+    if (!target) return;
+    beginSleepTimer(target);
+    toast(`Sleep timer: until ${timeStr}`, 'success');
 }
 
 export function cancelSleepTimer() {
@@ -296,9 +313,14 @@ function updateSleepTimerDisplay() {
     if (!dom.sleepTimerRemaining) return;
     const remainingMs = Math.max(0, state.sleepTimerEnd - Date.now());
     const totalSeconds = Math.ceil(remainingMs / 1000);
-    const m = Math.floor(totalSeconds / 60);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
     const s = totalSeconds % 60;
-    dom.sleepTimerRemaining.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    const pad = (n) => String(n).padStart(2, '0');
+    // Show hours only when the "stop at time" mode runs longer than an hour.
+    dom.sleepTimerRemaining.textContent = h > 0
+        ? `${h}:${pad(m)}:${pad(s)}`
+        : `${pad(m)}:${pad(s)}`;
 }
 
 // Alarm (wake-to-radio): start playback at a chosen time of day. Repeats daily

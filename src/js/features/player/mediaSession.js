@@ -2,7 +2,7 @@
 // and song-change desktop notifications.
 
 import { state } from '../../core/state.js';
-import { generatePlaceholderLogo } from '../../core/util.js';
+import { resolveLogoSrc } from '../../core/favicon.js';
 import { playStation, stopStation, prevStation, nextStation } from './playback.js';
 
 // Wire OS-level media controls (media keys, lock screen, system widget)
@@ -19,7 +19,7 @@ export function setupMediaSession() {
 // Update the metadata shown by the OS media controls
 export function updateMediaSession(trackTitle) {
     if (!('mediaSession' in navigator) || !state.currentStation) return;
-    const artwork = state.currentStation.favicon || generatePlaceholderLogo(state.currentStation.name);
+    const artwork = resolveLogoSrc(state.currentStation);
     navigator.mediaSession.metadata = new MediaMetadata({
         title: trackTitle || state.currentStation.name,
         artist: trackTitle ? state.currentStation.name : (state.currentStation.country || 'Internet Radio'),
@@ -42,7 +42,7 @@ export function showSongNotification(stationName, trackTitle) {
             state.lastTrackTitle = trackTitle;
             new Notification(stationName, {
                 body: `Now playing: ${trackTitle}`,
-                icon: state.currentStation.favicon || generatePlaceholderLogo(stationName),
+                icon: resolveLogoSrc(state.currentStation),
                 silent: true
             });
         }

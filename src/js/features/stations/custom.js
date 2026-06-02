@@ -4,7 +4,8 @@
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 import { HEART_FILLED_SVG, HEART_OUTLINE_SVG } from '../../core/constants.js';
-import { getFaviconFromUrl, generatePlaceholderLogo } from '../../core/util.js';
+import { getFaviconFromUrl } from '../../core/util.js';
+import { applyLogo } from '../../core/favicon.js';
 import { saveCustomStation, deleteCustomStation, updateCustomStation } from '../../core/db.js';
 import { toast, setStationName } from '../../ui/ui.js';
 import { isFavorite, toggleFavorite } from './favorites.js';
@@ -114,15 +115,7 @@ export function renderCustomStations() {
 
         const logo = document.createElement('img');
         logo.className = 'station-item-logo';
-        if (station.favicon) {
-            logo.src = station.favicon;
-            logo.onerror = function() {
-                this.src = generatePlaceholderLogo(station.name);
-                this.onerror = null;
-            };
-        } else {
-            logo.src = generatePlaceholderLogo(station.name);
-        }
+        applyLogo(logo, station);
 
         const info = document.createElement('div');
         info.className = 'station-item-info';
@@ -203,8 +196,6 @@ export function updateCurrentStationInfo() {
 
     const s = state.currentStation;
     const genre = s.tags ? s.tags.split(',')[0] : '';
-    const fallbackLogo = generatePlaceholderLogo(s.name);
-    const logoSrc = s.favicon || fallbackLogo;
 
     // Build the form with DOM APIs (not innerHTML) so station names/URLs
     // from the public Radio Browser catalog cannot inject markup (XSS).
@@ -214,8 +205,7 @@ export function updateCurrentStationInfo() {
 
     const logo = document.createElement('img');
     logo.className = 'current-station-logo';
-    logo.src = logoSrc;
-    logo.onerror = function () { this.src = fallbackLogo; this.onerror = null; };
+    applyLogo(logo, s);
 
     const makeField = (value, placeholder) => {
         const input = document.createElement('input');

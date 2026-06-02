@@ -85,7 +85,7 @@ export const state = {
         visualizerStyle: 'bars',
         visualizerSensitivity: 1.0,
         eqEnabled: false,
-        eqGains: [0, 0, 0, 0, 0],
+        eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         normalizeEnabled: false,
         recordSplit: false,
         alarmEnabled: false,
@@ -98,6 +98,8 @@ export const state = {
         m3uIndex: null,    // { list, fetchedAt } — aggregated M3U stations for search
         radioMainWidth: null, // px width of the player column in wide view (resizable)
         favoritesOrder: [],
-        customOrder: []
+        customOrder: [],
+        // Favicon URLs known to fail loading — skipped to avoid repeat fetches.
+        faviconFailed: []
     }
 };

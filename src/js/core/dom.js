@@ -118,6 +118,7 @@ export const dom = {
     updateProgressBar: byId('update-progress-bar'),
     viewModeSelect: byId('view-mode-select'),
     sleepTimerSelect: byId('sleep-timer-select'),
+    sleepUntilTime: byId('sleep-until-time'),
     sleepTimerStatus: byId('sleep-timer-status'),
     sleepTimerRemaining: byId('sleep-timer-remaining'),
     alarmEnabledCheckbox: byId('alarm-enabled'),

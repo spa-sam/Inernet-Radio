@@ -4,7 +4,7 @@
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 import { HEART_FILLED_SVG, HEART_OUTLINE_SVG } from '../../core/constants.js';
-import { generatePlaceholderLogo } from '../../core/util.js';
+import { applyLogo } from '../../core/favicon.js';
 import { saveSetting } from '../../core/db.js';
 import { isFavorite, toggleFavorite } from './favorites.js';
 import { addToBlacklist } from './blacklist.js';
@@ -33,15 +33,7 @@ export function renderStations(stations, container = dom.stationsList, append = 
 
         const logo = document.createElement('img');
         logo.className = 'station-item-logo';
-        if (station.favicon) {
-            logo.src = station.favicon;
-            logo.onerror = function() {
-                this.src = generatePlaceholderLogo(station.name);
-                this.onerror = null;
-            };
-        } else {
-            logo.src = generatePlaceholderLogo(station.name);
-        }
+        applyLogo(logo, station);
 
         const info = document.createElement('div');
         info.className = 'station-item-info';

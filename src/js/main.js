@@ -6,7 +6,8 @@
 import { state } from './core/state.js';
 import { dom } from './core/dom.js';
 import { APP_VERSION, SOURCES } from './core/constants.js';
-import { hasTauriApi, generatePlaceholderLogo } from './core/util.js';
+import { hasTauriApi } from './core/util.js';
+import { applyLogo, resolveLogoSrc } from './core/favicon.js';
 import { loadApiServers, loadFilterOptions } from './services/api.js';
 import {
     openDatabase,
@@ -74,6 +75,7 @@ import {
     applyViewMode,
     toggleViewMode,
     startSleepTimer,
+    startSleepUntil,
     setAlarm,
     initAlarm,
     copyCurrentTrack,
@@ -187,17 +189,8 @@ async function init() {
         updateMetadata(state.lastStation);
         updateCurrentStationInfo();
         dom.stationLogo.classList.remove('hidden');
-        const restoredLogo = state.lastStation.favicon || generatePlaceholderLogo(state.lastStation.name);
-        if (state.lastStation.favicon) {
-            dom.stationLogo.src = state.lastStation.favicon;
-            dom.stationLogo.onerror = function() {
-                this.src = generatePlaceholderLogo(state.lastStation.name);
-                this.onerror = null;
-            };
-        } else {
-            dom.stationLogo.src = restoredLogo;
-        }
-        if (dom.trackCardThumb) dom.trackCardThumb.style.backgroundImage = `url("${restoredLogo}")`;
+        applyLogo(dom.stationLogo, state.lastStation);
+        if (dom.trackCardThumb) dom.trackCardThumb.style.backgroundImage = `url("${resolveLogoSrc(state.lastStation)}")`;
     }
 
     // Load custom stations
@@ -497,6 +490,13 @@ if (dom.clearHistoryBtn) dom.clearHistoryBtn.addEventListener('click', clearTrac
 if (dom.sleepTimerSelect) {
     dom.sleepTimerSelect.addEventListener('change', () => {
         startSleepTimer(parseInt(dom.sleepTimerSelect.value, 10));
+    });
+}
+
+// Sleep timer (absolute clock time): "stop at HH:MM"
+if (dom.sleepUntilTime) {
+    dom.sleepUntilTime.addEventListener('change', () => {
+        startSleepUntil(dom.sleepUntilTime.value);
     });
 }
 
