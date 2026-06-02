@@ -48,8 +48,10 @@ export const state = {
     hls: null,
     proxyHlsLoader: null,
 
-    // Proxy port (loaded from backend)
+    // Proxy port + access token (loaded from backend). The token authorizes
+    // /stream requests so the local proxy is not an open relay.
     proxyPort: 0,
+    proxyToken: '',
 
     // Web Audio graph
     audioContext: null,

@@ -12,7 +12,7 @@ use tauri::{
     Manager,
 };
 
-use proxy::{start_proxy_server, ProxyPort};
+use proxy::{start_proxy_server, ProxyState};
 use recording::RecordingState;
 
 // Open a web URL in the user's default browser.
@@ -71,10 +71,12 @@ fn main() {
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
-            let port = tauri::async_runtime::block_on(async {
-                start_proxy_server(app_handle).await.unwrap_or(0)
+            let (port, token) = tauri::async_runtime::block_on(async {
+                start_proxy_server(app_handle)
+                    .await
+                    .unwrap_or((0, String::new()))
             });
-            app.manage(ProxyPort(port));
+            app.manage(ProxyState { port, token });
 
             // Create tray menu
             let show_item = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;

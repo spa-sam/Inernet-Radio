@@ -2,6 +2,7 @@
 // stream, strips ICY metadata blocks while forwarding clean audio to the
 // <audio> element, and emits live track titles to the frontend.
 
+use serde::Serialize;
 use std::time::Duration;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -10,7 +11,37 @@ use tokio::time::timeout;
 
 use crate::metadata::{parse_stream_title, parse_url, LiveMetadata};
 
-pub(crate) struct ProxyPort(pub(crate) u16);
+// Local proxy server state: the bound port and a per-launch access token.
+// The token is required on every /stream request so that only this app's
+// frontend (which fetched it via get_proxy_port) can drive the proxy — other
+// local processes cannot use it as an open relay to internal hosts.
+pub(crate) struct ProxyState {
+    pub(crate) port: u16,
+    pub(crate) token: String,
+}
+
+// Returned to the frontend so it can build authorized proxy URLs.
+#[derive(Serialize, Clone)]
+pub(crate) struct ProxyInfo {
+    pub(crate) port: u16,
+    pub(crate) token: String,
+}
+
+// Generate a random hex token without pulling in an RNG crate: each
+// RandomState is seeded with OS entropy, and finishing a hasher over no input
+// yields a value derived purely from that random seed. Two of them give a
+// 128-bit token — ample for a localhost capability check.
+fn random_token() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let mut token = String::with_capacity(32);
+    for _ in 0..2 {
+        let h = std::collections::hash_map::RandomState::new()
+            .build_hasher()
+            .finish();
+        token.push_str(&format!("{:016x}", h));
+    }
+    token
+}
 
 // A boxed async stream — either a plain TCP or a TLS connection.
 pub(crate) trait AsyncStream:
@@ -121,6 +152,36 @@ fn first_stream_url(body: &str) -> Option<String> {
     None
 }
 
+// Establish a TLS stream, validating the certificate first. Many radio servers
+// have expired or hostname-mismatched certificates, so on a validation failure
+// we retry once with validation disabled. The failed handshake consumes the
+// socket, so a fresh TCP connection is opened for the fallback. The relaxation
+// is logged, and strict validation is still enforced for well-behaved servers.
+async fn connect_tls(
+    addr: &str,
+    host: &str,
+) -> Result<Box<dyn AsyncStream>, Box<dyn std::error::Error + Send + Sync>> {
+    let tcp = timeout(Duration::from_secs(8), TcpStream::connect(addr)).await??;
+    let strict = tokio_native_tls::TlsConnector::from(native_tls::TlsConnector::new()?);
+    match timeout(Duration::from_secs(8), strict.connect(host, tcp)).await? {
+        Ok(tls) => Ok(Box::new(tls)),
+        Err(e) => {
+            eprintln!(
+                "[tls] certificate validation failed for {} ({}); retrying without validation",
+                host, e
+            );
+            let tcp = timeout(Duration::from_secs(8), TcpStream::connect(addr)).await??;
+            let insecure = native_tls::TlsConnector::builder()
+                .danger_accept_invalid_certs(true)
+                .danger_accept_invalid_hostnames(true)
+                .build()?;
+            let insecure = tokio_native_tls::TlsConnector::from(insecure);
+            let tls = timeout(Duration::from_secs(8), insecure.connect(host, tcp)).await??;
+            Ok(Box::new(tls))
+        }
+    }
+}
+
 // Open an audio stream, following HTTP redirects and resolving playlists.
 // Returns the reader positioned at the audio body, the resolved Content-Type,
 // and the ICY metadata interval (bytes of audio between metadata blocks) when
@@ -141,23 +202,10 @@ pub(crate) async fn open_audio_stream(
     let (host, port, path, is_ssl) = parse_url(url).ok_or("invalid url")?;
     let addr = format!("{}:{}", host, port);
 
-    let tcp = timeout(Duration::from_secs(8), TcpStream::connect(&addr)).await??;
-
     let mut stream: Box<dyn AsyncStream> = if is_ssl {
-        // Radio servers often have expired/mismatched certificates; accept
-        // them so streams are not blocked by TLS validation failures.
-        eprintln!(
-            "[tls] accepting unverified certificate for {} (validation disabled for stream proxy)",
-            host
-        );
-        let connector = native_tls::TlsConnector::builder()
-            .danger_accept_invalid_certs(true)
-            .danger_accept_invalid_hostnames(true)
-            .build()?;
-        let connector = tokio_native_tls::TlsConnector::from(connector);
-        let tls = timeout(Duration::from_secs(8), connector.connect(&host, tcp)).await??;
-        Box::new(tls)
+        connect_tls(&addr, &host).await?
     } else {
+        let tcp = timeout(Duration::from_secs(8), TcpStream::connect(&addr)).await??;
         Box::new(tcp)
     };
 
@@ -314,6 +362,7 @@ where
 async fn handle_proxy_client(
     mut client_stream: TcpStream,
     app: tauri::AppHandle,
+    token: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Read only the request line from the audio client
     let mut request_line = String::new();
@@ -341,12 +390,21 @@ async fn handle_proxy_client(
         return Ok(());
     }
 
-    // Split "url=<encoded>" from any extra query params (e.g. raw=1).
+    // Split "url=<encoded>" from any extra query params (e.g. token, raw).
     // The encoded URL never contains a literal '&', so the first '&'
     // marks the start of additional parameters.
     let query = &uri[12..];
     let (encoded_url, params) = query.split_once('&').unwrap_or((query, ""));
     let raw = params.contains("raw=1");
+
+    // Require the per-launch access token so the proxy cannot be used as an
+    // open relay by other local processes.
+    if !params.contains(&format!("token={}", token)) {
+        client_stream
+            .write_all(b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n")
+            .await?;
+        return Ok(());
+    }
 
     let target_url = percent_encoding::percent_decode_str(encoded_url)
         .decode_utf8_lossy()
@@ -400,16 +458,19 @@ async fn handle_proxy_client(
     Ok(())
 }
 
-pub(crate) async fn start_proxy_server(app: tauri::AppHandle) -> Option<u16> {
+pub(crate) async fn start_proxy_server(app: tauri::AppHandle) -> Option<(u16, String)> {
     let listener = TcpListener::bind("127.0.0.1:0").await.ok()?;
     let port = listener.local_addr().ok()?.port();
+    let token = random_token();
 
+    let server_token = token.clone();
     tokio::spawn(async move {
         loop {
             if let Ok((client_stream, _)) = listener.accept().await {
                 let app = app.clone();
+                let token = server_token.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = handle_proxy_client(client_stream, app).await {
+                    if let Err(e) = handle_proxy_client(client_stream, app, token).await {
                         eprintln!("Proxy client handle error: {:?}", e);
                     }
                 });
@@ -417,12 +478,15 @@ pub(crate) async fn start_proxy_server(app: tauri::AppHandle) -> Option<u16> {
         }
     });
 
-    Some(port)
+    Some((port, token))
 }
 
 #[tauri::command]
-pub(crate) fn get_proxy_port(state: tauri::State<'_, ProxyPort>) -> u16 {
-    state.0
+pub(crate) fn get_proxy_port(state: tauri::State<'_, ProxyState>) -> ProxyInfo {
+    ProxyInfo {
+        port: state.port,
+        token: state.token.clone(),
+    }
 }
 
 #[cfg(test)]

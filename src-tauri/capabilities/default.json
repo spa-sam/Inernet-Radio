@@ -10,7 +10,7 @@
     "core:window:allow-set-min-size",
     "core:window:allow-set-always-on-top",
     "dialog:default",
-    "fs:default",
+    "fs:allow-write-text-file",
     "sql:default",
     "sql:allow-load",
     "sql:allow-execute",

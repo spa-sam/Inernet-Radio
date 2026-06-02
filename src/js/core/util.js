@@ -8,7 +8,7 @@ export function getFaviconFromUrl(streamUrl) {
     try {
         const urlObj = new URL(streamUrl);
         return `${urlObj.protocol}//${urlObj.hostname}/favicon.ico`;
-    } catch (e) {
+    } catch {
         return '';
     }
 }

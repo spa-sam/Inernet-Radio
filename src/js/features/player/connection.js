@@ -2,7 +2,7 @@
 
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
-import { MAX_RECONNECT } from '../../core/constants.js';
+import { MAX_RECONNECT, RECONNECT_BASE_MS, RECONNECT_MAX_MS } from '../../core/constants.js';
 import { applyMarquee } from '../../ui/ui.js';
 import { stopVisualization } from '../../services/visualizer.js';
 import { updatePlayButton, playStation } from './playback.js';
@@ -43,11 +43,16 @@ export function scheduleReconnect() {
     }
     state.reconnectAttempts++;
     setConnectionState('reconnecting');
+    // Exponential backoff: 2s, 4s, 8s… capped at RECONNECT_MAX_MS.
+    const delay = Math.min(
+        RECONNECT_BASE_MS * 2 ** (state.reconnectAttempts - 1),
+        RECONNECT_MAX_MS
+    );
     state.reconnectTimer = setTimeout(() => {
         if (state.wantPlayback && state.currentStation) {
             playStation();
         }
-    }, 2500);
+    }, delay);
 }
 
 // Handle an unexpected stream interruption

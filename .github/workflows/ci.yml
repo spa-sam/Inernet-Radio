@@ -54,6 +54,33 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      # Run the unit tests for the pure parsers/helpers (parse_url,
+      # resolve_location, is_playlist, sanitize_filename, segment_path, …).
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --all-features
+
+  # ------------------------------------------------------------------
+  # Lint the vanilla-JS frontend with ESLint.
+  # ------------------------------------------------------------------
+  lint-js:
+    name: ESLint (frontend)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run ESLint
+        run: npm run lint
+
   # ------------------------------------------------------------------
   # Windows build: compile a release binary to ensure it links on the
   # actual target platform (no installer; just the binary).

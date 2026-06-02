@@ -80,6 +80,22 @@ stream and metadata requests above.
 - **Vanilla JS** ES modules (no bundler), grouped under `src/js/`
   (`core/`, `services/`, `features/`, `ui/`) with CSS partials in `src/styles/`.
 
+The local proxy validates TLS certificates first and only falls back to an
+unverified handshake when a station's certificate is expired/mismatched (logged
+on stderr). Each launch generates a random access token that the frontend must
+present on every `/stream` request, so the proxy cannot be used as an open relay
+by other local processes.
+
+## Known limitations
+
+- The local audio proxy speaks HTTP/1.0 and reads the stream body verbatim, so
+  it does not decode HTTP **chunked transfer-encoding**. Virtually all Shoutcast
+  / Icecast radio servers send a continuous (unchunked) body, but the rare
+  station served chunked may produce artifacts.
+- **Stream recording** writes the raw stream bytes to disk. Per-track splitting
+  works for self-framing codecs (MP3, AAC/ADTS); container formats that need a
+  global header (e.g. Ogg) are not re-framed per segment.
+
 ## Requirements
 
 - Node.js (v18+)

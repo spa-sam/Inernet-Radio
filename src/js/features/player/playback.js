@@ -15,7 +15,7 @@ import { fadeTo, targetVolume, cancelFade } from './volume.js';
 import { setConnectionState, scheduleReconnect } from './connection.js';
 import { startMetadataPolling, stopMetadataPolling } from './metadata.js';
 import { updateMediaSession } from './mediaSession.js';
-import { startRecording, stopRecording } from './recording.js';
+import { stopRecording } from './recording.js';
 
 // Shared playback success / error handlers
 function onPlaySuccess() {

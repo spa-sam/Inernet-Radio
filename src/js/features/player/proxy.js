@@ -9,7 +9,9 @@ export async function initProxy() {
     if (!hasTauriApi) return;
     try {
         const { invoke } = window.__TAURI__.core;
-        state.proxyPort = await invoke('get_proxy_port');
+        const info = await invoke('get_proxy_port');
+        state.proxyPort = info.port;
+        state.proxyToken = info.token;
         console.log('CORS Proxy server running on port:', state.proxyPort);
     } catch (e) {
         console.error('Failed to load proxy port:', e);
@@ -25,6 +27,7 @@ export function getProxiedUrl(originalUrl, raw) {
             return originalUrl;
         }
         let proxied = `http://127.0.0.1:${state.proxyPort}/stream?url=${encodeURIComponent(originalUrl)}`;
+        proxied += `&token=${state.proxyToken}`;
         if (raw) proxied += '&raw=1';
         return proxied;
     }
