@@ -49,6 +49,19 @@ export function ensureAudioGraph() {
     }
 }
 
+// Prepare the graph for playback. On WebKit (macOS WKWebView) the
+// MediaElementAudioSourceNode must exist and the context must be running
+// *before* the media element starts playing, otherwise WebKit routes audio
+// straight to the output and the EQ/compressor chain is bypassed. Chromium
+// (WebView2 on Windows) is lenient about ordering, but calling this early is
+// safe on both. Must run inside a user-gesture call stack so resume() sticks.
+export function prepareAudioGraph() {
+    ensureAudioGraph();
+    if (state.audioContext && state.audioContext.state === 'suspended') {
+        state.audioContext.resume();
+    }
+}
+
 // Drive the compressor as a loudness leveller. When disabled it is configured
 // transparently (ratio 1), so it can stay wired into the graph permanently.
 export function applyNormalization() {

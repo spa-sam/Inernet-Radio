@@ -7,7 +7,7 @@ import { getFaviconFromUrl, formatTimer } from '../../core/util.js';
 import { applyLogo, resolveLogoSrc } from '../../core/favicon.js';
 import { saveSetting } from '../../core/db.js';
 import { apiFetch } from '../../services/api.js';
-import { ensureAudioGraph } from '../../services/audio.js';
+import { ensureAudioGraph, prepareAudioGraph } from '../../services/audio.js';
 import { startVisualization, stopVisualization } from '../../services/visualizer.js';
 import { addToRecentlyPlayed, updateCurrentStationInfo } from '../stations.js';
 import { setStationName, updateMetadata, updateBrandStatus, toast } from '../../ui/ui.js';
@@ -89,6 +89,9 @@ function playHlsStation(url, onSuccess, onError) {
     }
 
     if (Hls.isSupported()) {
+        // Ensure the source node taps the element before MSE attaches, so the
+        // EQ chain stays in the path on WebKit.
+        prepareAudioGraph();
         state.hls = new Hls({
             enableWorker: false,
             loader: getProxyHlsLoader()
@@ -140,6 +143,11 @@ export function playStation() {
     }
 
     const streamUrl = state.currentStation.url_resolved || state.currentStation.url;
+
+    // Build/resume the audio graph before play() so the EQ chain is in the
+    // signal path on WebKit (macOS), not bypassed. We are still inside the
+    // user-gesture call stack that led here, so resume() is honoured.
+    prepareAudioGraph();
 
     if (isHlsStream(state.currentStation, streamUrl)) {
         playHlsStation(streamUrl);
@@ -344,6 +352,8 @@ export function previewCustomUrl() {
         updatePlayButton();
         dom.previewBtn.textContent = 'Preview';
     };
+
+    prepareAudioGraph();
 
     if (isHlsStream(tempStation, url)) {
         playHlsStation(url, onPreviewOk, onPreviewError);
