@@ -536,22 +536,19 @@ fn decode_to_pcm(
         None => return,
     };
     let track_id = track.id;
-    let mut decoder =
-        match symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default())
-        {
-            Ok(d) => d,
-            Err(e) => {
-                eprintln!("[pcm] no decoder: {}", e);
-                return;
-            }
-        };
+    let mut decoder = match symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())
+    {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("[pcm] no decoder: {}", e);
+            return;
+        }
+    };
 
     let mut resampler: Option<Resampler> = None;
-    loop {
-        let packet = match format.next_packet() {
-            Ok(p) => p,
-            Err(_) => break, // end of stream / IO error
-        };
+    // Loop ends when next_packet() returns Err (end of stream / IO error).
+    while let Ok(packet) = format.next_packet() {
         if packet.track_id() != track_id {
             continue;
         }
@@ -643,7 +640,11 @@ async fn handle_pcm_client(
 
     // Response headers + PCM stream header.
     if let Err(e) = write_proxy_headers(&mut client_stream, "application/octet-stream").await {
-        return if is_disconnect(&e) { Ok(()) } else { Err(e.into()) };
+        return if is_disconnect(&e) {
+            Ok(())
+        } else {
+            Err(e.into())
+        };
     }
     let mut header = Vec::with_capacity(9);
     header.extend_from_slice(b"PCM1");
@@ -655,7 +656,11 @@ async fn handle_pcm_client(
 
     while let Some(chunk) = pcm_rx.recv().await {
         if let Err(e) = client_stream.write_all(&chunk).await {
-            return if is_disconnect(&e) { Ok(()) } else { Err(e.into()) };
+            return if is_disconnect(&e) {
+                Ok(())
+            } else {
+                Err(e.into())
+            };
         }
     }
     Ok(())
