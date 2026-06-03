@@ -16,3 +16,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local planning notes — kept on disk, not published
+ACTION_PLAN.md
