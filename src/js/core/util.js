@@ -3,6 +3,16 @@
 // Whether the Tauri runtime API is available (desktop app vs plain browser).
 export const hasTauriApi = typeof window.__TAURI__ !== 'undefined';
 
+// Detect a WebKit engine that is NOT Chromium (i.e. macOS WKWebView / Safari).
+// On WebKit, <audio src=network> + createMediaElementSource does not feed the
+// Web Audio graph, so the EQ/analyser are dead. We route audio through a
+// Rust-decoded PCM stream + AudioWorklet there instead. Chromium (WebView2 on
+// Windows) feeds the graph normally and keeps the simpler <audio> path.
+export const isWebKit = (() => {
+    const ua = navigator.userAgent || '';
+    return /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg|CriOS/.test(ua);
+})();
+
 // Try to get favicon from a stream's domain
 export function getFaviconFromUrl(streamUrl) {
     try {

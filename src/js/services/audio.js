@@ -7,8 +7,12 @@ import { dom } from '../core/dom.js';
 import { EQ_BANDS, EQ_PRESETS } from '../core/constants.js';
 import { saveSetting } from '../core/db.js';
 
-// Build the audio graph once. createMediaElementSource can only be called
-// once per media element, hence the idempotent guard.
+// Build the processing graph once, WITHOUT a source node:
+//   eqFilters[0] → … → eqFilters[n] → compressor → analyser → masterGain → out
+// The source is attached separately (a MediaElementSource on the <audio> path,
+// or an AudioWorkletNode on the PCM path) so both can feed the same chain head
+// (eqFilters[0]). masterGain stays at 1 on the <audio> path (where loudness is
+// controlled via dom.audioPlayer.volume) and carries volume on the PCM path.
 export function ensureAudioGraph() {
     if (state.audioContext) return;
 
@@ -20,8 +24,6 @@ export function ensureAudioGraph() {
         state.dataArray = new Uint8Array(state.analyser.frequencyBinCount);
         state.smoothedData = new Float32Array(state.analyser.frequencyBinCount);
 
-        state.sourceNode = state.audioContext.createMediaElementSource(dom.audioPlayer);
-
         state.eqFilters = EQ_BANDS.map((band) => {
             const filter = state.audioContext.createBiquadFilter();
             filter.type = band.type;
@@ -32,21 +34,72 @@ export function ensureAudioGraph() {
         });
 
         state.compressorNode = state.audioContext.createDynamicsCompressor();
+        state.masterGain = state.audioContext.createGain();
+        state.masterGain.gain.value = 1;
 
-        let node = state.sourceNode;
-        state.eqFilters.forEach((filter) => {
-            node.connect(filter);
-            node = filter;
-        });
+        let node = state.eqFilters[0];
+        for (let i = 1; i < state.eqFilters.length; i++) {
+            node.connect(state.eqFilters[i]);
+            node = state.eqFilters[i];
+        }
         node.connect(state.compressorNode);
         state.compressorNode.connect(state.analyser);
-        state.analyser.connect(state.audioContext.destination);
+        state.analyser.connect(state.masterGain);
+        state.masterGain.connect(state.audioContext.destination);
 
         applyEqGains();
         applyNormalization();
     } catch (error) {
         console.error('Audio graph setup error:', error);
     }
+}
+
+// Attach the <audio> element as the graph source (Chromium / non-PCM path).
+// createMediaElementSource can only be called once per element, hence the guard.
+export function ensureMediaElementSource() {
+    if (!state.audioContext || state.sourceNode) return;
+    try {
+        state.sourceNode = state.audioContext.createMediaElementSource(dom.audioPlayer);
+        state.sourceNode.connect(state.eqFilters[0]);
+    } catch (error) {
+        console.error('MediaElementSource setup error:', error);
+    }
+}
+
+// Load the PCM worklet module once (idempotent).
+export async function ensurePcmWorklet() {
+    ensureAudioGraph();
+    if (state.workletReady) return;
+    await state.audioContext.audioWorklet.addModule('worklets/pcm-player.js');
+    state.workletReady = true;
+}
+
+// Create a fresh AudioWorkletNode for the PCM path and wire it into the chain
+// head. Returns the node so the caller can push PCM to its port. Any previous
+// worklet node is disconnected first.
+export function connectPcmWorklet() {
+    if (state.workletNode) {
+        try { state.workletNode.disconnect(); } catch { /* already gone */ }
+        state.workletNode = null;
+    }
+    state.workletNode = new AudioWorkletNode(state.audioContext, 'pcm-player', {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+        processorOptions: { prebufferFrames: Math.floor(state.audioContext.sampleRate * 0.4) }
+    });
+    state.workletNode.connect(state.eqFilters[0]);
+    return state.workletNode;
+}
+
+// Tear down the PCM worklet source (on stop / switching away from PCM path).
+export function disconnectPcmWorklet() {
+    if (state.workletNode) {
+        try { state.workletNode.port.postMessage({ type: 'reset' }); } catch { /* noop */ }
+        try { state.workletNode.disconnect(); } catch { /* noop */ }
+        state.workletNode = null;
+    }
+    state.workletActive = false;
 }
 
 // Prepare the graph for playback. On WebKit (macOS WKWebView) the
@@ -57,6 +110,8 @@ export function ensureAudioGraph() {
 // safe on both. Must run inside a user-gesture call stack so resume() sticks.
 export function prepareAudioGraph() {
     ensureAudioGraph();
+    // The <audio> element is the source on this path.
+    ensureMediaElementSource();
     if (state.audioContext && state.audioContext.state === 'suspended') {
         state.audioContext.resume();
     }

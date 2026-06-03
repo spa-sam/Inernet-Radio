@@ -61,9 +61,18 @@ export const state = {
     sourceNode: null,
     eqFilters: [],
     compressorNode: null,
+    masterGain: null,   // master output gain (drives volume on the PCM path)
     smoothedData: null,
     barPeaks: null, // peak bar positions
     peakHold: null, // hold time before peaks fall
+
+    // PCM playback path (macOS/WebKit): Rust decodes the stream to PCM and it is
+    // played through an AudioWorklet so the Web Audio graph (EQ/analyser) is fed.
+    // On the <audio> path these stay null/false.
+    workletNode: null,      // AudioWorkletNode ('pcm-player')
+    workletReady: false,    // worklet module added to the context
+    workletActive: false,   // true while the PCM path is the active source
+    pcmAbort: null,         // AbortController for the in-flight /pcm fetch
 
     // Volume / fade
     lastVolumeBeforeMute: 70,

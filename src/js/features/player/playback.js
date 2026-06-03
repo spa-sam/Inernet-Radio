@@ -3,17 +3,20 @@
 
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
-import { getFaviconFromUrl, formatTimer } from '../../core/util.js';
+import { getFaviconFromUrl, formatTimer, isWebKit } from '../../core/util.js';
 import { applyLogo, resolveLogoSrc } from '../../core/favicon.js';
 import { saveSetting } from '../../core/db.js';
 import { apiFetch } from '../../services/api.js';
-import { ensureAudioGraph, prepareAudioGraph } from '../../services/audio.js';
+import {
+    ensureAudioGraph, prepareAudioGraph,
+    ensurePcmWorklet, connectPcmWorklet, disconnectPcmWorklet
+} from '../../services/audio.js';
 import { startVisualization, stopVisualization } from '../../services/visualizer.js';
 import { addToRecentlyPlayed, updateCurrentStationInfo } from '../stations.js';
 import { setStationName, updateMetadata, updateBrandStatus, toast } from '../../ui/ui.js';
-import { getProxiedUrl } from './proxy.js';
+import { getProxiedUrl, getProxyPcmUrl } from './proxy.js';
 import { fadeTo, targetVolume, cancelFade } from './volume.js';
-import { setConnectionState, scheduleReconnect } from './connection.js';
+import { setConnectionState, scheduleReconnect, handleStreamDrop } from './connection.js';
 import { startMetadataPolling, stopMetadataPolling } from './metadata.js';
 import { updateMediaSession } from './mediaSession.js';
 import { stopRecording } from './recording.js';
@@ -120,6 +123,98 @@ function playHlsStation(url, onSuccess, onError) {
     }
 }
 
+// Whether to use the Rust-decoded PCM + AudioWorklet path. Needed on macOS
+// (WebKit) for plain streams, where a network <audio> element does not feed the
+// Web Audio graph, so the EQ/visualizer would otherwise be dead. HLS keeps the
+// hls.js (MSE) path; Chromium keeps the simpler <audio> path.
+function shouldUsePcmPath(station, url) {
+    return isWebKit && state.proxyPort > 0 && !isHlsStream(station, url);
+}
+
+// Abort the in-flight PCM fetch and detach the worklet source.
+function teardownPcm() {
+    if (state.pcmAbort) {
+        try { state.pcmAbort.abort(); } catch { /* noop */ }
+        state.pcmAbort = null;
+    }
+    disconnectPcmWorklet();
+}
+
+// Read the /pcm response: parse the small header, then forward interleaved
+// stereo f32 frames to the worklet. Calls onSuccess once audio starts flowing
+// and triggers a reconnect when the stream ends or errors.
+async function pumpPcm(reader, node, abort, onSuccess) {
+    let headerParsed = false;
+    let started = false;
+    let carry = new Uint8Array(0);
+    const FRAME_BYTES = 8; // stereo: 2 × f32
+
+    const concat = (a, b) => {
+        const c = new Uint8Array(a.length + b.length);
+        c.set(a, 0);
+        c.set(b, a.length);
+        return c;
+    };
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            let buf = value && value.length ? concat(carry, value) : carry;
+
+            if (!headerParsed) {
+                if (buf.length < 9) { carry = buf; continue; }
+                // Header: "PCM1" + sampleRate u32le + channels u8. We always
+                // resample to 48 kHz stereo, so the values are informational.
+                headerParsed = true;
+                buf = buf.subarray(9);
+            }
+
+            const usable = buf.length - (buf.length % FRAME_BYTES);
+            if (usable > 0) {
+                const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + usable);
+                const samples = new Float32Array(ab); // host is little-endian
+                node.port.postMessage({ type: 'pcm', samples }, [samples.buffer]);
+                carry = buf.slice(usable);
+                if (!started) { started = true; onSuccess(); }
+            } else {
+                carry = buf.slice();
+            }
+        }
+        // Upstream ended — treat as a drop so the reconnect logic kicks in.
+        if (state.wantPlayback && !abort.signal.aborted) handleStreamDrop('pcm stream ended');
+    } catch (e) {
+        if (e.name === 'AbortError' || abort.signal.aborted) return;
+        onPlayError(e);
+    }
+}
+
+// Play a plain stream via the Rust /pcm endpoint + AudioWorklet (macOS path).
+async function playPcmStation(url, onSuccess, onError) {
+    onSuccess = onSuccess || onPlaySuccess;
+    onError = onError || onPlayError;
+    try {
+        await ensurePcmWorklet();
+        if (state.audioContext.state === 'suspended') await state.audioContext.resume();
+
+        const node = connectPcmWorklet();
+        state.workletActive = true;
+        // Start silent on the master gain so playback can fade in.
+        cancelFade();
+        if (state.masterGain) state.masterGain.gain.value = 0;
+
+        const abort = new AbortController();
+        state.pcmAbort = abort;
+        const resp = await fetch(getProxyPcmUrl(url), { signal: abort.signal });
+        if (!resp.ok || !resp.body) throw new Error('PCM HTTP ' + resp.status);
+
+        pumpPcm(resp.body.getReader(), node, abort, onSuccess);
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        onError(e);
+    }
+}
+
 // Play current station
 export function playStation() {
     if (!state.currentStation) return;
@@ -136,13 +231,19 @@ export function playStation() {
     cancelFade();
     dom.audioPlayer.volume = 0;
 
-    // Tear down any previous HLS instance before switching streams
+    // Tear down any previous HLS instance / PCM stream before switching
     if (state.hls) {
         state.hls.destroy();
         state.hls = null;
     }
+    teardownPcm();
 
     const streamUrl = state.currentStation.url_resolved || state.currentStation.url;
+
+    if (shouldUsePcmPath(state.currentStation, streamUrl)) {
+        playPcmStation(streamUrl);
+        return;
+    }
 
     // Build/resume the audio graph before play() so the EQ chain is in the
     // signal path on WebKit (macOS), not bypassed. We are still inside the
@@ -173,6 +274,7 @@ export function stopStation() {
             state.hls.destroy();
             state.hls = null;
         }
+        teardownPcm();
         dom.audioPlayer.src = '';
         // Leave the element at the user's level for the next play
         dom.audioPlayer.volume = targetVolume();
@@ -326,11 +428,12 @@ export function previewCustomUrl() {
 
     updateCurrentStationInfo();
 
-    // Tear down any previous HLS instance
+    // Tear down any previous HLS instance / PCM stream
     if (state.hls) {
         state.hls.destroy();
         state.hls = null;
     }
+    teardownPcm();
 
     // Start silent so the preview can fade in
     cancelFade();
@@ -352,6 +455,11 @@ export function previewCustomUrl() {
         updatePlayButton();
         dom.previewBtn.textContent = 'Preview';
     };
+
+    if (shouldUsePcmPath(tempStation, url)) {
+        playPcmStation(url, onPreviewOk, onPreviewError);
+        return;
+    }
 
     prepareAudioGraph();
 

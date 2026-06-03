@@ -7,9 +7,21 @@ use std::time::Duration;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc;
 use tokio::time::timeout;
 
+use symphonia::core::audio::SampleBuffer;
+use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::{MediaSourceStream, ReadOnlySource};
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
+
 use crate::metadata::{parse_stream_title, parse_url, LiveMetadata};
+
+// Output format for the PCM path: fixed 48 kHz stereo f32 little-endian, so the
+// frontend AudioWorklet always sees one rate/layout regardless of the source.
+const PCM_OUT_RATE: u32 = 48_000;
 
 // Local proxy server state: the bound port and a per-launch access token.
 // The token is required on every /stream request so that only this app's
@@ -358,6 +370,297 @@ where
     Ok(())
 }
 
+// A blocking std::io::Read backed by an async mpsc of byte chunks. Lets the
+// synchronous symphonia decoder pull from the async network reader: the reader
+// task pushes chunks; this Read blocks on `blocking_recv` (run inside
+// spawn_blocking, never on an async worker). Wrapped in a Mutex so the type is
+// Sync, as symphonia's MediaSource requires.
+struct ChannelReader {
+    inner: std::sync::Mutex<ChannelReaderInner>,
+}
+struct ChannelReaderInner {
+    rx: mpsc::Receiver<Vec<u8>>,
+    buf: Vec<u8>,
+    pos: usize,
+}
+impl ChannelReader {
+    fn new(rx: mpsc::Receiver<Vec<u8>>) -> Self {
+        ChannelReader {
+            inner: std::sync::Mutex::new(ChannelReaderInner {
+                rx,
+                buf: Vec::new(),
+                pos: 0,
+            }),
+        }
+    }
+}
+impl std::io::Read for ChannelReader {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        let mut g = self.inner.lock().unwrap();
+        loop {
+            if g.pos < g.buf.len() {
+                let start = g.pos;
+                let n = (g.buf.len() - start).min(out.len());
+                out[..n].copy_from_slice(&g.buf[start..start + n]);
+                g.pos += n;
+                return Ok(n);
+            }
+            match g.rx.blocking_recv() {
+                Some(chunk) => {
+                    g.buf = chunk;
+                    g.pos = 0;
+                }
+                None => return Ok(0), // upstream ended
+            }
+        }
+    }
+}
+
+// Map an upstream Content-Type to a container/codec extension hint for symphonia.
+fn ext_from_content_type(ct: &str) -> Option<&'static str> {
+    let c = ct.to_lowercase();
+    if c.contains("mpeg") || c.contains("mp3") {
+        Some("mp3")
+    } else if c.contains("aac") || c.contains("aacp") {
+        Some("aac")
+    } else if c.contains("mp4") || c.contains("m4a") {
+        Some("mp4")
+    } else if c.contains("ogg") || c.contains("opus") || c.contains("vorbis") {
+        Some("ogg")
+    } else if c.contains("flac") {
+        Some("flac")
+    } else if c.contains("wav") {
+        Some("wav")
+    } else {
+        None
+    }
+}
+
+// Stateful linear resampler: interleaved stereo f32 at `in_rate` -> 48 kHz.
+// Keeps the last input frame and fractional phase across calls so packet
+// boundaries don't click. 48 kHz input passes through untouched.
+struct Resampler {
+    in_rate: u32,
+    frac: f64,
+    prev: [f32; 2],
+    primed: bool,
+}
+impl Resampler {
+    fn new(in_rate: u32) -> Self {
+        Resampler {
+            in_rate,
+            frac: 0.0,
+            prev: [0.0, 0.0],
+            primed: false,
+        }
+    }
+
+    // index space: 0 = prev frame, k>=1 = input frame (k-1)
+    fn sample_at(&self, input: &[f32], n: usize, idx: i64) -> (f32, f32) {
+        if idx <= 0 {
+            (self.prev[0], self.prev[1])
+        } else {
+            let k = (idx - 1) as usize;
+            let k = k.min(n - 1);
+            (input[k * 2], input[k * 2 + 1])
+        }
+    }
+
+    fn process(&mut self, input: &[f32]) -> Vec<f32> {
+        let n = input.len() / 2;
+        if n == 0 {
+            return Vec::new();
+        }
+        if self.in_rate == PCM_OUT_RATE {
+            self.prev = [input[(n - 1) * 2], input[(n - 1) * 2 + 1]];
+            return input.to_vec();
+        }
+        if !self.primed {
+            self.prev = [input[0], input[1]];
+            self.primed = true;
+        }
+        let step = self.in_rate as f64 / PCM_OUT_RATE as f64;
+        let mut out = Vec::new();
+        let mut pos = self.frac;
+        while pos < n as f64 {
+            let i = pos.floor() as i64;
+            let f = (pos - i as f64) as f32;
+            let (al, ar) = self.sample_at(input, n, i);
+            let (bl, br) = self.sample_at(input, n, i + 1);
+            out.push(al + (bl - al) * f);
+            out.push(ar + (br - ar) * f);
+            pos += step;
+        }
+        self.prev = [input[(n - 1) * 2], input[(n - 1) * 2 + 1]];
+        self.frac = (pos - n as f64).max(0.0);
+        out
+    }
+}
+
+// Synchronous decode loop (runs in spawn_blocking): pull encoded bytes from
+// `bytes_rx`, decode with symphonia, convert to stereo, resample to 48 kHz, and
+// push interleaved f32 little-endian PCM to `pcm_tx`. Returns when the stream
+// ends, the client drops (send fails), or decoding errors fatally.
+fn decode_to_pcm(
+    bytes_rx: mpsc::Receiver<Vec<u8>>,
+    content_type: String,
+    pcm_tx: mpsc::Sender<Vec<u8>>,
+) {
+    let mss = MediaSourceStream::new(
+        Box::new(ReadOnlySource::new(ChannelReader::new(bytes_rx))),
+        Default::default(),
+    );
+    let mut hint = Hint::new();
+    if let Some(ext) = ext_from_content_type(&content_type) {
+        hint.with_extension(ext);
+    }
+    let probed = match symphonia::default::get_probe().format(
+        &hint,
+        mss,
+        &FormatOptions::default(),
+        &MetadataOptions::default(),
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[pcm] probe failed: {}", e);
+            return;
+        }
+    };
+    let mut format = probed.format;
+    let track = match format
+        .tracks()
+        .iter()
+        .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
+    {
+        Some(t) => t.clone(),
+        None => return,
+    };
+    let track_id = track.id;
+    let mut decoder =
+        match symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default())
+        {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("[pcm] no decoder: {}", e);
+                return;
+            }
+        };
+
+    let mut resampler: Option<Resampler> = None;
+    loop {
+        let packet = match format.next_packet() {
+            Ok(p) => p,
+            Err(_) => break, // end of stream / IO error
+        };
+        if packet.track_id() != track_id {
+            continue;
+        }
+        let decoded = match decoder.decode(&packet) {
+            Ok(d) => d,
+            Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
+            Err(_) => break,
+        };
+
+        let spec = *decoded.spec();
+        let in_rate = spec.rate;
+        let in_ch = spec.channels.count();
+        let frames = decoded.frames();
+        if frames == 0 || in_ch == 0 {
+            continue;
+        }
+
+        let mut sbuf = SampleBuffer::<f32>::new(frames as u64, spec);
+        sbuf.copy_interleaved_ref(decoded);
+        let samples = sbuf.samples();
+
+        // Downmix/duplicate to stereo interleaved.
+        let mut stereo = Vec::with_capacity(frames * 2);
+        for f in 0..frames {
+            let base = f * in_ch;
+            let l = samples[base];
+            let r = if in_ch > 1 { samples[base + 1] } else { l };
+            stereo.push(l);
+            stereo.push(r);
+        }
+
+        let r = resampler.get_or_insert_with(|| Resampler::new(in_rate));
+        if r.in_rate != in_rate {
+            *r = Resampler::new(in_rate);
+        }
+        let out = r.process(&stereo);
+
+        let mut bytes = Vec::with_capacity(out.len() * 4);
+        for s in out {
+            bytes.extend_from_slice(&s.to_le_bytes());
+        }
+        if !bytes.is_empty() && pcm_tx.blocking_send(bytes).is_err() {
+            break; // client gone
+        }
+    }
+}
+
+// Handle a /pcm request: open the upstream stream, decode it to 48 kHz stereo
+// f32 PCM in the background, and stream it to the client preceded by a small
+// header ("PCM1" + sample_rate u32le + channels u8). Used by the macOS path.
+async fn handle_pcm_client(
+    mut client_stream: TcpStream,
+    target_url: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Open without ICY metadata: clean audio bytes go straight to the decoder.
+    let (reader, content_type, _metaint) =
+        match open_audio_stream(&target_url, 0, false, false).await {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("[pcm] resolve error for {}: {:?}", target_url, e);
+                let _ = client_stream
+                    .write_all(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
+                    .await;
+                return Ok(());
+            }
+        };
+
+    // Reader task: pump raw encoded bytes into the decoder via a bounded channel.
+    let (bytes_tx, bytes_rx) = mpsc::channel::<Vec<u8>>(64);
+    tokio::spawn(async move {
+        let mut reader = reader;
+        let mut buf = vec![0u8; 16384];
+        loop {
+            match reader.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    if bytes_tx.send(buf[..n].to_vec()).await.is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    // Decoder task (blocking): encoded bytes -> PCM.
+    let (pcm_tx, mut pcm_rx) = mpsc::channel::<Vec<u8>>(32);
+    tokio::task::spawn_blocking(move || decode_to_pcm(bytes_rx, content_type, pcm_tx));
+
+    // Response headers + PCM stream header.
+    if let Err(e) = write_proxy_headers(&mut client_stream, "application/octet-stream").await {
+        return if is_disconnect(&e) { Ok(()) } else { Err(e.into()) };
+    }
+    let mut header = Vec::with_capacity(9);
+    header.extend_from_slice(b"PCM1");
+    header.extend_from_slice(&PCM_OUT_RATE.to_le_bytes());
+    header.push(2u8); // channels
+    if client_stream.write_all(&header).await.is_err() {
+        return Ok(());
+    }
+
+    while let Some(chunk) = pcm_rx.recv().await {
+        if let Err(e) = client_stream.write_all(&chunk).await {
+            return if is_disconnect(&e) { Ok(()) } else { Err(e.into()) };
+        }
+    }
+    Ok(())
+}
+
 // Local CORS audio-proxy handler
 async fn handle_proxy_client(
     mut client_stream: TcpStream,
@@ -382,18 +685,24 @@ async fn handle_proxy_client(
         return Ok(());
     }
 
+    // Two endpoints: /stream (raw bytes to <audio>) and /pcm (decoded PCM for the
+    // macOS AudioWorklet path).
     let uri = parts[1];
-    if !uri.starts_with("/stream?url=") {
+    let (is_pcm, prefix_len) = if uri.starts_with("/pcm?url=") {
+        (true, 9)
+    } else if uri.starts_with("/stream?url=") {
+        (false, 12)
+    } else {
         client_stream
             .write_all(b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n")
             .await?;
         return Ok(());
-    }
+    };
 
     // Split "url=<encoded>" from any extra query params (e.g. token, raw).
     // The encoded URL never contains a literal '&', so the first '&'
     // marks the start of additional parameters.
-    let query = &uri[12..];
+    let query = &uri[prefix_len..];
     let (encoded_url, params) = query.split_once('&').unwrap_or((query, ""));
     let raw = params.contains("raw=1");
 
@@ -409,6 +718,11 @@ async fn handle_proxy_client(
     let target_url = percent_encoding::percent_decode_str(encoded_url)
         .decode_utf8_lossy()
         .into_owned();
+
+    // The PCM path decodes the stream to 48 kHz stereo f32 in the backend.
+    if is_pcm {
+        return handle_pcm_client(client_stream, target_url).await;
+    }
 
     // Request ICY metadata for normal playback (not raw HLS) so the track
     // title can be parsed out of the live stream and pushed to the frontend.

@@ -3,12 +3,29 @@
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 
+// Read/write the active output level (0..1). On the PCM path loudness lives on
+// the master GainNode (the <audio> element is silent there); otherwise it is the
+// <audio> element's own volume. This keeps volume/fade working on both paths.
+function getOutputLevel() {
+    if (state.workletActive && state.masterGain) return state.masterGain.gain.value;
+    return dom.audioPlayer.volume;
+}
+
+export function setOutputLevel(v) {
+    v = Math.max(0, Math.min(1, v));
+    if (state.workletActive && state.masterGain) {
+        state.masterGain.gain.value = v;
+    } else {
+        dom.audioPlayer.volume = v;
+    }
+}
+
 export function setVolume(volume) {
     // An explicit volume change overrides any running fade animation
     cancelFade();
     volume = Math.max(0, Math.min(100, parseInt(volume) || 0));
     dom.volumeSlider.value = volume;
-    dom.audioPlayer.volume = volume / 100;
+    setOutputLevel(volume / 100);
     // Drive the slider fill gradient and the percentage label
     dom.volumeSlider.style.setProperty('--vol', volume + '%');
     dom.volumeValueLabel.textContent = volume + '%';
@@ -32,10 +49,10 @@ export function cancelFade() {
 export function fadeTo(target, onDone) {
     cancelFade();
     target = Math.max(0, Math.min(1, target));
-    const start = dom.audioPlayer.volume;
+    const start = getOutputLevel();
     const delta = target - start;
     if (Math.abs(delta) < 0.005) {
-        dom.audioPlayer.volume = target;
+        setOutputLevel(target);
         if (onDone) onDone();
         return;
     }
@@ -44,12 +61,12 @@ export function fadeTo(target, onDone) {
     const step = (now) => {
         const t = Math.min(1, (now - startTime) / FADE_DURATION);
         const eased = 1 - Math.pow(1 - t, 2); // ease-out
-        dom.audioPlayer.volume = Math.max(0, Math.min(1, start + delta * eased));
+        setOutputLevel(start + delta * eased);
         if (t < 1) {
             state.fadeRAF = requestAnimationFrame(step);
         } else {
             state.fadeRAF = null;
-            dom.audioPlayer.volume = target;
+            setOutputLevel(target);
             if (onDone) onDone();
         }
     };

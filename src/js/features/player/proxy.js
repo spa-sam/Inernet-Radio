@@ -33,3 +33,9 @@ export function getProxiedUrl(originalUrl, raw) {
     }
     return originalUrl;
 }
+
+// Build the /pcm proxy URL: the backend decodes the stream and returns 48 kHz
+// stereo f32 PCM (preceded by a small header) for the AudioWorklet path.
+export function getProxyPcmUrl(originalUrl) {
+    return `http://127.0.0.1:${state.proxyPort}/pcm?url=${encodeURIComponent(originalUrl)}&token=${state.proxyToken}`;
+}
