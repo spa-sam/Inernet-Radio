@@ -141,9 +141,11 @@ function teardownPcm() {
 }
 
 // Read the /pcm response: parse the small header, then forward interleaved
-// stereo f32 frames to the worklet. Calls onSuccess once audio starts flowing
-// and triggers a reconnect when the stream ends or errors.
-async function pumpPcm(reader, node, abort, onSuccess) {
+// stereo f32 frames to the worklet. Calls onSuccess once audio starts flowing.
+// If the stream ends without ever producing audio (codec the backend can't
+// decode) it calls onUnsupported so the caller can fall back to <audio>; if it
+// drops after audio started, it triggers the normal reconnect.
+async function pumpPcm(reader, node, abort, onSuccess, onUnsupported) {
     let headerParsed = false;
     let started = false;
     let carry = new Uint8Array(0);
@@ -181,18 +183,27 @@ async function pumpPcm(reader, node, abort, onSuccess) {
                 carry = buf.slice();
             }
         }
-        // Upstream ended — treat as a drop so the reconnect logic kicks in.
-        if (state.wantPlayback && !abort.signal.aborted) handleStreamDrop('pcm stream ended');
+        if (abort.signal.aborted || !state.wantPlayback) return;
+        if (!started) {
+            // No audio ever decoded — the backend couldn't handle this codec.
+            onUnsupported();
+        } else {
+            // Upstream ended mid-play — reconnect.
+            handleStreamDrop('pcm stream ended');
+        }
     } catch (e) {
         if (e.name === 'AbortError' || abort.signal.aborted) return;
+        if (!started) { onUnsupported(); return; }
         onPlayError(e);
     }
 }
 
 // Play a plain stream via the Rust /pcm endpoint + AudioWorklet (macOS path).
-async function playPcmStation(url, onSuccess, onError) {
+// onUnsupported falls back to the <audio> path when decoding isn't possible.
+async function playPcmStation(url, onSuccess, onError, onUnsupported) {
     onSuccess = onSuccess || onPlaySuccess;
     onError = onError || onPlayError;
+    onUnsupported = onUnsupported || onError;
     try {
         await ensurePcmWorklet();
         if (state.audioContext.state === 'suspended') await state.audioContext.resume();
@@ -208,10 +219,11 @@ async function playPcmStation(url, onSuccess, onError) {
         const resp = await fetch(getProxyPcmUrl(url), { signal: abort.signal });
         if (!resp.ok || !resp.body) throw new Error('PCM HTTP ' + resp.status);
 
-        pumpPcm(resp.body.getReader(), node, abort, onSuccess);
+        pumpPcm(resp.body.getReader(), node, abort, onSuccess, onUnsupported);
     } catch (e) {
         if (e.name === 'AbortError') return;
-        onError(e);
+        // Setup/fetch failed before any audio — fall back to <audio>.
+        onUnsupported(e);
     }
 }
 
@@ -239,18 +251,29 @@ export function playStation() {
     teardownPcm();
 
     const streamUrl = state.currentStation.url_resolved || state.currentStation.url;
+    const station = state.currentStation;
 
-    if (shouldUsePcmPath(state.currentStation, streamUrl)) {
-        playPcmStation(streamUrl);
+    if (shouldUsePcmPath(station, streamUrl)) {
+        playPcmStation(streamUrl, onPlaySuccess, onPlayError, () => {
+            console.warn('PCM path unavailable, falling back to <audio>');
+            teardownPcm();
+            playViaMediaElement(streamUrl, station);
+        });
         return;
     }
 
-    // Build/resume the audio graph before play() so the EQ chain is in the
-    // signal path on WebKit (macOS), not bypassed. We are still inside the
-    // user-gesture call stack that led here, so resume() is honoured.
+    playViaMediaElement(streamUrl, station);
+}
+
+// Play a stream through the <audio> element (Chromium path, macOS HLS, or a
+// fallback when PCM decoding is unavailable). Builds/resumes the audio graph
+// before play() so the EQ chain is in the signal path.
+function playViaMediaElement(streamUrl, station) {
+    cancelFade();
+    dom.audioPlayer.volume = 0;
     prepareAudioGraph();
 
-    if (isHlsStream(state.currentStation, streamUrl)) {
+    if (isHlsStream(station, streamUrl)) {
         playHlsStation(streamUrl);
     } else {
         // Route stream URL through local CORS proxy
@@ -456,19 +479,27 @@ export function previewCustomUrl() {
         dom.previewBtn.textContent = 'Preview';
     };
 
+    const previewViaMediaElement = () => {
+        cancelFade();
+        dom.audioPlayer.volume = 0;
+        prepareAudioGraph();
+        if (isHlsStream(tempStation, url)) {
+            playHlsStation(url, onPreviewOk, onPreviewError);
+        } else {
+            dom.audioPlayer.src = getProxiedUrl(url);
+            dom.audioPlayer.play().then(onPreviewOk).catch(onPreviewError);
+        }
+    };
+
     if (shouldUsePcmPath(tempStation, url)) {
-        playPcmStation(url, onPreviewOk, onPreviewError);
+        playPcmStation(url, onPreviewOk, onPreviewError, () => {
+            teardownPcm();
+            previewViaMediaElement();
+        });
         return;
     }
 
-    prepareAudioGraph();
-
-    if (isHlsStream(tempStation, url)) {
-        playHlsStation(url, onPreviewOk, onPreviewError);
-    } else {
-        dom.audioPlayer.src = getProxiedUrl(url);
-        dom.audioPlayer.play().then(onPreviewOk).catch(onPreviewError);
-    }
+    previewViaMediaElement();
 }
 
 // --- Live timer -------------------------------------------------------------

@@ -6,38 +6,6 @@ import { adjustBrightness } from '../core/util.js';
 import { saveSetting } from '../core/db.js';
 import { ensureAudioGraph } from './audio.js';
 
-// Synthetic spectrum used as a fallback when the AnalyserNode returns no data.
-// (WebKit/Safari silences the analyser for cross-origin media even with CORS,
-// so on macOS the real bytes are all zero. Windows/Chromium has real data and
-// never hits this path.) Produces an animated, bass-heavy spectrum.
-function fillSyntheticSpectrum(arr) {
-    const t = performance.now() / 1000;
-    const n = arr.length;
-    for (let i = 0; i < n; i++) {
-        const f = i / n;                       // 0 (low) .. 1 (high)
-        const envelope = Math.pow(1 - f, 1.6); // louder lows, quieter highs
-        const wobble =
-            0.55 +
-            0.30 * Math.sin(t * 2.1 + i * 0.35) +
-            0.18 * Math.sin(t * 3.7 + i * 0.13) +
-            0.12 * Math.sin(t * 5.3 + i * 0.07);
-        const v = Math.max(0, Math.min(1, envelope * wobble));
-        arr[i] = Math.round(v * 230);
-    }
-}
-
-// Synthetic waveform (centred at 128) for the 'wave' style fallback.
-function fillSyntheticWave(arr) {
-    const t = performance.now() / 1000;
-    const n = arr.length;
-    for (let i = 0; i < n; i++) {
-        const x = i / n;
-        const v = Math.sin(x * Math.PI * 4 + t * 4) * 0.4
-                + Math.sin(x * Math.PI * 9 + t * 7) * 0.2;
-        arr[i] = Math.round(128 + v * 110);
-    }
-}
-
 function drawVisualization() {
     if (!state.settings.visualizerEnabled || !state.analyser) return;
 
@@ -48,22 +16,6 @@ function drawVisualization() {
     const dataArray = state.dataArray;
 
     state.analyser.getByteFrequencyData(dataArray);
-
-    // Detect a "dead" analyser (all zeros while playing — the WebKit/macOS
-    // case) and switch to the synthetic animation. Real data resets it, so
-    // Windows always shows the true spectrum.
-    if (state.isPlaying) {
-        let sum = 0;
-        for (let k = 0; k < dataArray.length; k++) sum += dataArray[k];
-        if (sum === 0) {
-            state.vizZeroFrames = (state.vizZeroFrames || 0) + 1;
-            if (state.vizZeroFrames > 30) state.vizFake = true;
-        } else {
-            state.vizZeroFrames = 0;
-            state.vizFake = false;
-        }
-    }
-    if (state.vizFake) fillSyntheticSpectrum(dataArray);
 
     ctx.clearRect(0, 0, width, height);
 
@@ -141,7 +93,6 @@ function drawVisualization() {
         }
     } else if (style === 'wave') {
         state.analyser.getByteTimeDomainData(dataArray);
-        if (state.vizFake) fillSyntheticWave(dataArray);
 
         ctx.beginPath();
         ctx.lineWidth = 3;
@@ -301,9 +252,6 @@ export function stopVisualization() {
     if (state.smoothedData) {
         state.smoothedData.fill(0);
     }
-    // Re-evaluate the analyser (real vs synthetic) on the next playback.
-    state.vizZeroFrames = 0;
-    state.vizFake = false;
 
     const ctx = dom.visualizerCanvas.getContext('2d');
     ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';

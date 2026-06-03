@@ -596,41 +596,115 @@ fn decode_to_pcm(
     }
 }
 
+// Forward an upstream stream (no ICY) verbatim into the decoder channel.
+async fn pump_raw_to_channel<R>(mut reader: R, tx: mpsc::Sender<Vec<u8>>)
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut buf = vec![0u8; 16384];
+    loop {
+        match reader.read(&mut buf).await {
+            Ok(0) => break,
+            Ok(n) => {
+                if tx.send(buf[..n].to_vec()).await.is_err() {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+}
+
+// Forward an ICY stream into the decoder channel, stripping the interleaved
+// metadata blocks and emitting parsed track titles to the frontend (same wire
+// format as pipe_with_icy, but the audio bytes go to the decoder rather than
+// straight to the client).
+async fn pump_icy_to_channel<R>(
+    mut reader: R,
+    metaint: usize,
+    app: tauri::AppHandle,
+    url: String,
+    tx: mpsc::Sender<Vec<u8>>,
+) where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut buf = vec![0u8; 16384];
+    let mut until_meta = metaint;
+    let mut last_title = String::new();
+    loop {
+        if until_meta > 0 {
+            let to_read = buf.len().min(until_meta);
+            let n = match reader.read(&mut buf[..to_read]).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            if tx.send(buf[..n].to_vec()).await.is_err() {
+                break;
+            }
+            until_meta -= n;
+        } else {
+            let mut len_byte = [0u8; 1];
+            if reader.read_exact(&mut len_byte).await.is_err() {
+                break;
+            }
+            let meta_len = (len_byte[0] as usize) * 16;
+            if meta_len > 0 {
+                let mut meta_buf = vec![0u8; meta_len];
+                if reader.read_exact(&mut meta_buf).await.is_err() {
+                    break;
+                }
+                let meta_str = String::from_utf8_lossy(&meta_buf);
+                if let Some(title) = parse_stream_title(&meta_str) {
+                    if title != last_title {
+                        last_title = title.clone();
+                        let _ = app.emit(
+                            "stream-metadata",
+                            LiveMetadata {
+                                url: url.clone(),
+                                title,
+                            },
+                        );
+                    }
+                }
+            }
+            until_meta = metaint;
+        }
+    }
+}
+
 // Handle a /pcm request: open the upstream stream, decode it to 48 kHz stereo
 // f32 PCM in the background, and stream it to the client preceded by a small
 // header ("PCM1" + sample_rate u32le + channels u8). Used by the macOS path.
 async fn handle_pcm_client(
     mut client_stream: TcpStream,
     target_url: String,
+    app: tauri::AppHandle,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Open without ICY metadata: clean audio bytes go straight to the decoder.
-    let (reader, content_type, _metaint) =
-        match open_audio_stream(&target_url, 0, false, false).await {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("[pcm] resolve error for {}: {:?}", target_url, e);
-                let _ = client_stream
-                    .write_all(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
-                    .await;
-                return Ok(());
-            }
-        };
+    // Request ICY metadata so live track titles can still be parsed: the feeder
+    // strips the metadata blocks out before the audio bytes reach the decoder.
+    let (reader, content_type, metaint) = match open_audio_stream(&target_url, 0, false, true).await
+    {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("[pcm] resolve error for {}: {:?}", target_url, e);
+            let _ = client_stream
+                .write_all(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
+                .await;
+            return Ok(());
+        }
+    };
 
-    // Reader task: pump raw encoded bytes into the decoder via a bounded channel.
+    // Reader task: forward clean encoded audio to the decoder via a bounded
+    // channel, stripping ICY metadata (and emitting track titles) when present.
     let (bytes_tx, bytes_rx) = mpsc::channel::<Vec<u8>>(64);
+    let meta_app = app.clone();
+    let meta_url = target_url.clone();
     tokio::spawn(async move {
-        let mut reader = reader;
-        let mut buf = vec![0u8; 16384];
-        loop {
-            match reader.read(&mut buf).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    if bytes_tx.send(buf[..n].to_vec()).await.is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
+        match metaint {
+            Some(mi) if mi > 0 => {
+                pump_icy_to_channel(reader, mi, meta_app, meta_url, bytes_tx).await;
             }
+            _ => pump_raw_to_channel(reader, bytes_tx).await,
         }
     });
 
@@ -726,7 +800,7 @@ async fn handle_proxy_client(
 
     // The PCM path decodes the stream to 48 kHz stereo f32 in the backend.
     if is_pcm {
-        return handle_pcm_client(client_stream, target_url).await;
+        return handle_pcm_client(client_stream, target_url, app).await;
     }
 
     // Request ICY metadata for normal playback (not raw HLS) so the track
