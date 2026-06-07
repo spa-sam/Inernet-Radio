@@ -5,7 +5,7 @@
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 import { hasTauriApi, formatTimer } from '../../core/util.js';
-import { applyMarquee } from '../../ui/ui.js';
+import { applyMarquee, updateInsecureBadge, toast } from '../../ui/ui.js';
 import { showSongNotification, updateMediaSession } from './mediaSession.js';
 
 async function fetchStreamMetadata(url) {
@@ -29,18 +29,11 @@ async function fetchStreamMetadata(url) {
 
 // Fetch the title once at connect for instant feedback. Subsequent updates
 // arrive via the proxy's `stream-metadata` events (see setupStreamMetadataListener),
-// so there is no longer a repeating poll opening its own connection.
-export function startMetadataPolling() {
+// so there is no repeating poll opening its own connection.
+export function fetchInitialMetadata() {
     if (state.currentStation && hasTauriApi) {
         const streamUrl = state.currentStation.url_resolved || state.currentStation.url;
         fetchStreamMetadata(streamUrl);
-    }
-}
-
-export function stopMetadataPolling() {
-    if (state.metadataInterval) {
-        clearInterval(state.metadataInterval);
-        state.metadataInterval = null;
     }
 }
 
@@ -50,6 +43,8 @@ export function stopMetadataPolling() {
 //    connection the user has switched away from are ignored.
 //  - `recording-progress`: elapsed time and bytes written for the active
 //    recording, used to drive the REC indicator.
+//  - `stream-insecure`: the current stream's TLS certificate could not be
+//    validated; the proxy connected anyway, so flag it in the UI.
 export async function setupStreamMetadataListener() {
     if (!hasTauriApi || !window.__TAURI__.event) return;
     try {
@@ -65,6 +60,18 @@ export async function setupStreamMetadataListener() {
             applyMarquee(dom.nowPlayingTrack);
             showSongNotification(state.currentStation.name, title);
             updateMediaSession(title);
+        });
+        await listen('stream-insecure', (event) => {
+            if (!state.isPlaying || !state.currentStation) return;
+            const url = event.payload;
+            const current = state.currentStation.url_resolved || state.currentStation.url;
+            if (url && current && url !== current) return;
+            // Notify once per connection (the flag is reset on each play).
+            if (!state.insecureStream) {
+                state.insecureStream = true;
+                updateInsecureBadge();
+                toast('Insecure connection: TLS certificate not verified', 'error');
+            }
         });
         await listen('recording-progress', (event) => {
             if (!state.isRecording) return;

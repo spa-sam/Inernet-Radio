@@ -6,7 +6,6 @@ import { MAX_RECONNECT, RECONNECT_BASE_MS, RECONNECT_MAX_MS } from '../../core/c
 import { applyMarquee } from '../../ui/ui.js';
 import { stopVisualization } from '../../services/visualizer.js';
 import { updatePlayButton, playStation } from './playback.js';
-import { stopMetadataPolling } from './metadata.js';
 
 // Show connection / playback status in the now-playing line
 export function setConnectionState(phase) {
@@ -59,6 +58,5 @@ export function scheduleReconnect() {
 export function handleStreamDrop(reason) {
     if (!state.wantPlayback) return;
     console.warn('Stream interrupted:', reason);
-    stopMetadataPolling();
     scheduleReconnect();
 }

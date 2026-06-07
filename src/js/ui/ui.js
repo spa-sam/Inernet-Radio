@@ -4,7 +4,7 @@
 
 import { state } from '../core/state.js';
 import { dom } from '../core/dom.js';
-import { APP_VERSION, COPY_ICON_SVG, CHECK_ICON_SVG } from '../core/constants.js';
+import { COPY_ICON_SVG, CHECK_ICON_SVG } from '../core/constants.js';
 import { hasTauriApi } from '../core/util.js';
 import { saveSetting } from '../core/db.js';
 import { refreshVisualizerSize } from '../services/visualizer.js';
@@ -113,7 +113,16 @@ export function updateStationDetails(station) {
 // Reflect playing / stopped state on the brand "ON AIR" badge
 export function updateBrandStatus() {
     if (!dom.brandStatus) return;
-    dom.brandStatus.textContent = `v${APP_VERSION} · ${state.isPlaying ? 'ON AIR' : 'OFF AIR'}`;
+    const ver = state.appVersion ? `v${state.appVersion} · ` : '';
+    dom.brandStatus.textContent = `${ver}${state.isPlaying ? 'ON AIR' : 'OFF AIR'}`;
+}
+
+// Show the "Unverified" badge in the station header when the active stream's
+// TLS certificate could not be validated (hidden otherwise).
+export function updateInsecureBadge() {
+    if (!dom.insecureBadge) return;
+    const show = state.isPlaying && state.insecureStream;
+    dom.insecureBadge.classList.toggle('hidden', !show);
 }
 
 // Wait until the webview viewport changes after a window resize

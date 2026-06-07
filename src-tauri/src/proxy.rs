@@ -17,7 +17,7 @@ use symphonia::core::io::{MediaSourceStream, ReadOnlySource};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-use crate::metadata::{parse_stream_title, parse_url, LiveMetadata};
+use crate::metadata::{parse_url, IcyDemux, IcyEvent, LiveMetadata};
 
 // Output format for the PCM path: fixed 48 kHz stereo f32 little-endian, so the
 // frontend AudioWorklet always sees one rate/layout regardless of the source.
@@ -169,14 +169,17 @@ fn first_stream_url(body: &str) -> Option<String> {
 // we retry once with validation disabled. The failed handshake consumes the
 // socket, so a fresh TCP connection is opened for the fallback. The relaxation
 // is logged, and strict validation is still enforced for well-behaved servers.
+// Returns the stream plus a flag that is true when the certificate could not be
+// validated and the insecure fallback was used (surfaced to the UI as an
+// "unverified connection" warning).
 async fn connect_tls(
     addr: &str,
     host: &str,
-) -> Result<Box<dyn AsyncStream>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(Box<dyn AsyncStream>, bool), Box<dyn std::error::Error + Send + Sync>> {
     let tcp = timeout(Duration::from_secs(8), TcpStream::connect(addr)).await??;
     let strict = tokio_native_tls::TlsConnector::from(native_tls::TlsConnector::new()?);
     match timeout(Duration::from_secs(8), strict.connect(host, tcp)).await? {
-        Ok(tls) => Ok(Box::new(tls)),
+        Ok(tls) => Ok((Box::new(tls), false)),
         Err(e) => {
             eprintln!(
                 "[tls] certificate validation failed for {} ({}); retrying without validation",
@@ -189,24 +192,25 @@ async fn connect_tls(
                 .build()?;
             let insecure = tokio_native_tls::TlsConnector::from(insecure);
             let tls = timeout(Duration::from_secs(8), insecure.connect(host, tcp)).await??;
-            Ok(Box::new(tls))
+            Ok((Box::new(tls), true))
         }
     }
 }
 
+// What open_audio_stream hands back: the reader positioned at the audio body,
+// the resolved Content-Type, the ICY metadata interval (bytes of audio between
+// metadata blocks, when `want_meta` is set and the server supports it), and an
+// `insecure` flag that is true when any TLS hop fell back to skipping
+// certificate validation.
+pub(crate) type OpenedStream = (BufReader<Box<dyn AsyncStream>>, String, Option<usize>, bool);
+
 // Open an audio stream, following HTTP redirects and resolving playlists.
-// Returns the reader positioned at the audio body, the resolved Content-Type,
-// and the ICY metadata interval (bytes of audio between metadata blocks) when
-// `want_meta` is set and the server supports it.
 pub(crate) async fn open_audio_stream(
     url: &str,
     hops: u8,
     raw: bool,
     want_meta: bool,
-) -> Result<
-    (BufReader<Box<dyn AsyncStream>>, String, Option<usize>),
-    Box<dyn std::error::Error + Send + Sync>,
-> {
+) -> Result<OpenedStream, Box<dyn std::error::Error + Send + Sync>> {
     if hops >= 5 {
         return Err("too many redirects".into());
     }
@@ -214,11 +218,14 @@ pub(crate) async fn open_audio_stream(
     let (host, port, path, is_ssl) = parse_url(url).ok_or("invalid url")?;
     let addr = format!("{}:{}", host, port);
 
-    let mut stream: Box<dyn AsyncStream> = if is_ssl {
+    // `insecure` is set when this hop's TLS handshake skipped cert validation;
+    // it is OR-ed with any inner hop so a redirect chain reports the warning if
+    // any link in it was unverified.
+    let (mut stream, insecure): (Box<dyn AsyncStream>, bool) = if is_ssl {
         connect_tls(&addr, &host).await?
     } else {
         let tcp = timeout(Duration::from_secs(8), TcpStream::connect(&addr)).await??;
-        Box::new(tcp)
+        (Box::new(tcp), false)
     };
 
     // Optionally ask for ICY metadata. When requested, the interleaved metadata
@@ -285,7 +292,9 @@ pub(crate) async fn open_audio_stream(
     // Follow HTTP redirects
     if (300..400).contains(&status) && !location.is_empty() {
         let next = resolve_location(url, &location);
-        return Box::pin(open_audio_stream(&next, hops + 1, raw, want_meta)).await;
+        let (r, ct, mi, inner_insecure) =
+            Box::pin(open_audio_stream(&next, hops + 1, raw, want_meta)).await?;
+        return Ok((r, ct, mi, inner_insecure || insecure));
     }
 
     // Resolve .pls / .m3u playlists to the underlying stream URL.
@@ -302,7 +311,9 @@ pub(crate) async fn open_audio_stream(
 
         let body_text = String::from_utf8_lossy(&body);
         let stream_url = first_stream_url(&body_text).ok_or("playlist has no stream url")?;
-        return Box::pin(open_audio_stream(&stream_url, hops + 1, raw, want_meta)).await;
+        let (r, ct, mi, inner_insecure) =
+            Box::pin(open_audio_stream(&stream_url, hops + 1, raw, want_meta)).await?;
+        return Ok((r, ct, mi, inner_insecure || insecure));
     }
 
     let content_type = if content_type.is_empty() {
@@ -310,7 +321,7 @@ pub(crate) async fn open_audio_stream(
     } else {
         content_type
     };
-    Ok((reader, content_type, metaint))
+    Ok((reader, content_type, metaint, insecure))
 }
 
 // Copy an ICY stream to the client while stripping the interleaved metadata
@@ -330,41 +341,21 @@ where
     W: tokio::io::AsyncWrite + Unpin,
 {
     let mut buf = vec![0u8; 16384];
-    let mut until_meta = metaint;
-    let mut last_title = String::new();
+    let mut demux = IcyDemux::new(metaint);
     loop {
-        if until_meta > 0 {
-            // Forward audio up to the next metadata boundary.
-            let to_read = buf.len().min(until_meta);
-            let n = reader.read(&mut buf[..to_read]).await?;
-            if n == 0 {
-                break; // stream ended
+        match demux.pull(&mut reader, &mut buf).await? {
+            IcyEvent::Audio(n) => writer.write_all(&buf[..n]).await?,
+            IcyEvent::Title(Some(title)) => {
+                let _ = app.emit(
+                    "stream-metadata",
+                    LiveMetadata {
+                        url: url.clone(),
+                        title,
+                    },
+                );
             }
-            writer.write_all(&buf[..n]).await?;
-            until_meta -= n;
-        } else {
-            // Metadata block: one length byte (in 16-byte units) + payload.
-            let mut len_byte = [0u8; 1];
-            reader.read_exact(&mut len_byte).await?;
-            let meta_len = (len_byte[0] as usize) * 16;
-            if meta_len > 0 {
-                let mut meta_buf = vec![0u8; meta_len];
-                reader.read_exact(&mut meta_buf).await?;
-                let meta_str = String::from_utf8_lossy(&meta_buf);
-                if let Some(title) = parse_stream_title(&meta_str) {
-                    if title != last_title {
-                        last_title = title.clone();
-                        let _ = app.emit(
-                            "stream-metadata",
-                            LiveMetadata {
-                                url: url.clone(),
-                                title,
-                            },
-                        );
-                    }
-                }
-            }
-            until_meta = metaint;
+            IcyEvent::Title(None) => {}
+            IcyEvent::End => break,
         }
     }
     Ok(())
@@ -629,45 +620,26 @@ async fn pump_icy_to_channel<R>(
     R: tokio::io::AsyncRead + Unpin,
 {
     let mut buf = vec![0u8; 16384];
-    let mut until_meta = metaint;
-    let mut last_title = String::new();
+    let mut demux = IcyDemux::new(metaint);
     loop {
-        if until_meta > 0 {
-            let to_read = buf.len().min(until_meta);
-            let n = match reader.read(&mut buf[..to_read]).await {
-                Ok(0) | Err(_) => break,
-                Ok(n) => n,
-            };
-            if tx.send(buf[..n].to_vec()).await.is_err() {
-                break;
-            }
-            until_meta -= n;
-        } else {
-            let mut len_byte = [0u8; 1];
-            if reader.read_exact(&mut len_byte).await.is_err() {
-                break;
-            }
-            let meta_len = (len_byte[0] as usize) * 16;
-            if meta_len > 0 {
-                let mut meta_buf = vec![0u8; meta_len];
-                if reader.read_exact(&mut meta_buf).await.is_err() {
+        match demux.pull(&mut reader, &mut buf).await {
+            Ok(IcyEvent::Audio(n)) => {
+                if tx.send(buf[..n].to_vec()).await.is_err() {
                     break;
                 }
-                let meta_str = String::from_utf8_lossy(&meta_buf);
-                if let Some(title) = parse_stream_title(&meta_str) {
-                    if title != last_title {
-                        last_title = title.clone();
-                        let _ = app.emit(
-                            "stream-metadata",
-                            LiveMetadata {
-                                url: url.clone(),
-                                title,
-                            },
-                        );
-                    }
-                }
             }
-            until_meta = metaint;
+            Ok(IcyEvent::Title(Some(title))) => {
+                let _ = app.emit(
+                    "stream-metadata",
+                    LiveMetadata {
+                        url: url.clone(),
+                        title,
+                    },
+                );
+            }
+            Ok(IcyEvent::Title(None)) => {}
+            // End of stream or a read error (interrupted connection): stop.
+            Ok(IcyEvent::End) | Err(_) => break,
         }
     }
 }
@@ -682,17 +654,20 @@ async fn handle_pcm_client(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Request ICY metadata so live track titles can still be parsed: the feeder
     // strips the metadata blocks out before the audio bytes reach the decoder.
-    let (reader, content_type, metaint) = match open_audio_stream(&target_url, 0, false, true).await
-    {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("[pcm] resolve error for {}: {:?}", target_url, e);
-            let _ = client_stream
-                .write_all(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
-                .await;
-            return Ok(());
-        }
-    };
+    let (reader, content_type, metaint, insecure) =
+        match open_audio_stream(&target_url, 0, false, true).await {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("[pcm] resolve error for {}: {:?}", target_url, e);
+                let _ = client_stream
+                    .write_all(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
+                    .await;
+                return Ok(());
+            }
+        };
+    if insecure {
+        let _ = app.emit("stream-insecure", target_url.clone());
+    }
 
     // Reader task: forward clean encoded audio to the decoder via a bounded
     // channel, stripping ICY metadata (and emitting track titles) when present.
@@ -806,7 +781,10 @@ async fn handle_proxy_client(
     // Request ICY metadata for normal playback (not raw HLS) so the track
     // title can be parsed out of the live stream and pushed to the frontend.
     match open_audio_stream(&target_url, 0, raw, !raw).await {
-        Ok((mut remote_reader, content_type, metaint)) => {
+        Ok((mut remote_reader, content_type, metaint, insecure)) => {
+            if insecure {
+                let _ = app.emit("stream-insecure", target_url.clone());
+            }
             if let Err(e) = write_proxy_headers(&mut client_stream, &content_type).await {
                 return if is_disconnect(&e) {
                     Ok(())

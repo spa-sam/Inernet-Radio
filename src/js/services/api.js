@@ -10,10 +10,26 @@ let apiServers = [
 ];
 let currentApiServer = 0;
 
+// How long to wait on a single mirror before giving up and failing over. Some
+// Radio Browser mirrors accept the connection but stall; without this the
+// browser default (tens of seconds) would block the whole failover chain.
+const API_TIMEOUT_MS = 5000;
+
+// fetch() with an abort-based timeout so a hung mirror can't stall failover.
+async function fetchWithTimeout(url, ms = API_TIMEOUT_MS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+        return await fetch(url, { signal: ctrl.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 // Fetch the live list of Radio Browser mirror servers and replace the defaults.
 export async function loadApiServers() {
     try {
-        const res = await fetch('https://all.api.radio-browser.info/json/servers');
+        const res = await fetchWithTimeout('https://all.api.radio-browser.info/json/servers');
         const servers = await res.json();
         const names = [...new Set(servers.map(s => s.name).filter(Boolean))];
         if (names.length > 0) {
@@ -31,7 +47,7 @@ export async function apiFetch(path) {
     for (let i = 0; i < apiServers.length; i++) {
         const index = (currentApiServer + i) % apiServers.length;
         try {
-            const res = await fetch(`https://${apiServers[index]}/json${path}`);
+            const res = await fetchWithTimeout(`https://${apiServers[index]}/json${path}`);
             if (!res.ok) throw new Error('HTTP ' + res.status);
             currentApiServer = index;
             return await res.json();

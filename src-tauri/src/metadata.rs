@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
@@ -182,6 +182,84 @@ pub(crate) fn parse_stream_title(meta_str: &str) -> Option<String> {
     None
 }
 
+// One step produced by IcyDemux::pull: either a chunk of clean audio written
+// into the caller's buffer, a consumed metadata block (carrying the new track
+// title when it changed), or end of stream.
+pub(crate) enum IcyEvent {
+    // `usize` bytes of audio were written to the front of the caller's buffer.
+    Audio(usize),
+    // A metadata block was consumed; `Some(title)` when the StreamTitle changed.
+    Title(Option<String>),
+    // The upstream ended cleanly on an audio boundary.
+    End,
+}
+
+// Shared ICY metadata de-interleaver. An ICY stream carries `metaint` bytes of
+// audio, then a length byte (in 16-byte units) followed by that many metadata
+// bytes, repeating. This walks that framing once so every consumer (live
+// playback, the PCM decoder feed, and recording) shares a single implementation
+// instead of re-deriving the state machine. Audio bytes are handed back
+// verbatim; metadata blocks are parsed for the track title and never surface in
+// the audio.
+pub(crate) struct IcyDemux {
+    metaint: usize,
+    until_meta: usize,
+    last_title: String,
+}
+
+impl IcyDemux {
+    pub(crate) fn new(metaint: usize) -> Self {
+        IcyDemux {
+            metaint,
+            until_meta: metaint,
+            last_title: String::new(),
+        }
+    }
+
+    // Advance the stream by one step. Reads audio up to the next metadata
+    // boundary into `buf` (returning Audio), or consumes a metadata block at the
+    // boundary (returning Title). A clean EOF on an audio read yields End; an EOF
+    // mid-frame surfaces as an Err (an interrupted/closed connection), which
+    // callers treat as the end of the stream.
+    pub(crate) async fn pull<R>(
+        &mut self,
+        reader: &mut R,
+        buf: &mut [u8],
+    ) -> std::io::Result<IcyEvent>
+    where
+        R: AsyncRead + Unpin,
+    {
+        if self.until_meta > 0 {
+            // Forward audio, but never past the next metadata boundary.
+            let to_read = buf.len().min(self.until_meta);
+            let n = reader.read(&mut buf[..to_read]).await?;
+            if n == 0 {
+                return Ok(IcyEvent::End);
+            }
+            self.until_meta -= n;
+            Ok(IcyEvent::Audio(n))
+        } else {
+            // Metadata block: one length byte (in 16-byte units) + payload.
+            let mut len_byte = [0u8; 1];
+            reader.read_exact(&mut len_byte).await?;
+            let meta_len = (len_byte[0] as usize) * 16;
+            let mut changed = None;
+            if meta_len > 0 {
+                let mut meta_buf = vec![0u8; meta_len];
+                reader.read_exact(&mut meta_buf).await?;
+                if let Some(title) = parse_stream_title(&String::from_utf8_lossy(&meta_buf)) {
+                    if title != self.last_title {
+                        self.last_title = title.clone();
+                        changed = Some(title);
+                    }
+                }
+            }
+            self.until_meta = self.metaint;
+            Ok(IcyEvent::Title(changed))
+        }
+    }
+}
+
 // Extract ICY metadata asynchronously supporting HTTP and HTTPS
 async fn extract_icy_metadata_async(url: &str) -> Option<StreamMetadata> {
     let (host, port, path, is_ssl) = parse_url(url)?;
@@ -263,5 +341,52 @@ mod tests {
     fn parse_stream_title_empty_is_none() {
         assert_eq!(parse_stream_title("StreamTitle='';"), None);
         assert_eq!(parse_stream_title("no metadata here"), None);
+    }
+
+    #[test]
+    fn icy_demux_walks_audio_and_metadata_frames() {
+        // metaint = 4: 4 audio bytes, then a length byte (16-byte units) and the
+        // metadata payload, repeating. "StreamTitle='A';" is exactly 16 bytes.
+        let mut stream: Vec<u8> = Vec::new();
+        stream.extend_from_slice(b"WXYZ"); // audio block 1
+        stream.push(1); // 1 * 16 = 16 metadata bytes
+        stream.extend_from_slice(b"StreamTitle='A';");
+        stream.extend_from_slice(b"PQRS"); // audio block 2
+        stream.push(0); // empty metadata block (no title)
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let mut reader: &[u8] = &stream;
+            let mut demux = IcyDemux::new(4);
+            let mut buf = [0u8; 32];
+
+            // First audio chunk.
+            match demux.pull(&mut reader, &mut buf).await.unwrap() {
+                IcyEvent::Audio(n) => assert_eq!(&buf[..n], b"WXYZ"),
+                _ => panic!("expected audio"),
+            }
+            // Metadata block carrying the new title.
+            match demux.pull(&mut reader, &mut buf).await.unwrap() {
+                IcyEvent::Title(t) => assert_eq!(t.as_deref(), Some("A")),
+                _ => panic!("expected title"),
+            }
+            // Second audio chunk.
+            match demux.pull(&mut reader, &mut buf).await.unwrap() {
+                IcyEvent::Audio(n) => assert_eq!(&buf[..n], b"PQRS"),
+                _ => panic!("expected audio"),
+            }
+            // Empty metadata block: no title change.
+            match demux.pull(&mut reader, &mut buf).await.unwrap() {
+                IcyEvent::Title(t) => assert_eq!(t, None),
+                _ => panic!("expected empty title"),
+            }
+            // Clean end of stream on the next audio boundary.
+            assert!(matches!(
+                demux.pull(&mut reader, &mut buf).await.unwrap(),
+                IcyEvent::End
+            ));
+        });
     }
 }

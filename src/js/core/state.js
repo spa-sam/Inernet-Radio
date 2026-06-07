@@ -4,6 +4,10 @@
 // `let` bindings, hence a single object).
 
 export const state = {
+    // App version, resolved at startup from the Tauri runtime (Cargo.toml is the
+    // single source of truth). Empty in a plain browser, where it is not shown.
+    appVersion: '',
+
     // Window / layout
     isAlwaysOnTop: false,
 
@@ -18,11 +22,13 @@ export const state = {
     // Playback
     currentStation: null,
     isPlaying: false,
-    metadataInterval: null,
     wantPlayback: false,
     reconnectAttempts: 0,
     reconnectTimer: null,
     lastTrackTitle: '',
+    // True when the current stream's TLS certificate could not be validated and
+    // the proxy connected anyway (surfaced as an "unverified" warning).
+    insecureStream: false,
 
     // Collections
     favorites: [],

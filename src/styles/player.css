@@ -132,6 +132,23 @@
 .container.playing .live-badge,
 .container.playing .live-badge-sm { display: inline-block; }
 
+/* "Unverified" badge: shown next to LIVE when the active stream's TLS
+   certificate could not be validated. Toggled via the .hidden class from JS. */
+.insecure-badge {
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    background: rgba(255, 176, 32, 0.16);
+    color: #ffb020;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    text-transform: uppercase;
+}
+.insecure-badge.hidden { display: none; }
+
 .station-name-row { display: block; overflow: hidden; }
 #station-name {
     font-size: 1.7rem;

@@ -130,6 +130,7 @@ export const dom = {
     // Layout / header
     viewSwitch: byId('view-switch'),
     brandStatus: byId('brand-status'),
+    insecureBadge: byId('insecure-badge'),
     stationSub: byId('station-sub'),
     stationsCount: byId('stations-count'),
     transportQuality: byId('transport-quality'),

@@ -10,7 +10,7 @@ use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::timeout;
 
-use crate::metadata::parse_stream_title;
+use crate::metadata::{IcyDemux, IcyEvent};
 use crate::proxy::{open_audio_stream, AsyncStream};
 
 // Recording progress pushed to the frontend roughly once per second so the UI
@@ -77,7 +77,9 @@ async fn record_stream(
     split: bool,
 ) {
     match open_audio_stream(&url, 0, false, split).await {
-        Ok((reader, _content_type, metaint)) => match (split, metaint) {
+        // The insecure-TLS flag is surfaced only on the playback path, not while
+        // recording, so it is ignored here.
+        Ok((reader, _content_type, metaint, _insecure)) => match (split, metaint) {
             (true, Some(mi)) if mi > 0 => record_split(&app, reader, mi, &path, &stop).await,
             // No ICY metadata available: fall back to a single continuous file.
             _ => record_single(&app, reader, &path, &stop).await,
@@ -146,8 +148,7 @@ async fn record_split(
         }
     };
     let mut buf = vec![0u8; 16384];
-    let mut until_meta = metaint;
-    let mut last_title = String::new();
+    let mut demux = IcyDemux::new(metaint);
     let started = std::time::Instant::now();
     let mut total: u64 = 0;
     let mut last_sec = u64::MAX;
@@ -155,59 +156,30 @@ async fn record_split(
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        if until_meta > 0 {
-            let to_read = buf.len().min(until_meta);
-            match timeout(Duration::from_secs(15), reader.read(&mut buf[..to_read])).await {
-                Ok(Ok(0)) => break,
-                Ok(Ok(n)) => {
-                    if file.write_all(&buf[..n]).await.is_err() {
-                        break;
-                    }
-                    until_meta -= n;
-                    total += n as u64;
-                    emit_recording_progress(app, &started, total, &mut last_sec);
-                }
-                Ok(Err(_)) => break,
-                Err(_) => break,
-            }
-        } else {
-            // Metadata block: one length byte (16-byte units) + payload.
-            let mut len_byte = [0u8; 1];
-            if timeout(Duration::from_secs(15), reader.read_exact(&mut len_byte))
-                .await
-                .map(|r| r.is_err())
-                .unwrap_or(true)
-            {
-                break;
-            }
-            let meta_len = (len_byte[0] as usize) * 16;
-            if meta_len > 0 {
-                let mut meta_buf = vec![0u8; meta_len];
-                if timeout(Duration::from_secs(15), reader.read_exact(&mut meta_buf))
-                    .await
-                    .map(|r| r.is_err())
-                    .unwrap_or(true)
-                {
+        // A 15s timeout guards against a stalled connection.
+        match timeout(Duration::from_secs(15), demux.pull(&mut reader, &mut buf)).await {
+            Ok(Ok(IcyEvent::Audio(n))) => {
+                if file.write_all(&buf[..n]).await.is_err() {
                     break;
                 }
-                if let Some(title) = parse_stream_title(&String::from_utf8_lossy(&meta_buf)) {
-                    if title != last_title {
-                        last_title = title.clone();
-                        // Finish the current segment and open one for the new track.
-                        let _ = file.flush().await;
-                        index += 1;
-                        match tokio::fs::File::create(segment_path(base, index, Some(&title))).await
-                        {
-                            Ok(f) => file = f,
-                            Err(e) => {
-                                eprintln!("[rec] cannot create segment: {:?}", e);
-                                break;
-                            }
-                        }
+                total += n as u64;
+                emit_recording_progress(app, &started, total, &mut last_sec);
+            }
+            Ok(Ok(IcyEvent::Title(Some(title)))) => {
+                // Finish the current segment and open one for the new track.
+                let _ = file.flush().await;
+                index += 1;
+                match tokio::fs::File::create(segment_path(base, index, Some(&title))).await {
+                    Ok(f) => file = f,
+                    Err(e) => {
+                        eprintln!("[rec] cannot create segment: {:?}", e);
+                        break;
                     }
                 }
             }
-            until_meta = metaint;
+            Ok(Ok(IcyEvent::Title(None))) => {}
+            // End of stream, read error, or a stalled connection: stop.
+            Ok(Ok(IcyEvent::End)) | Ok(Err(_)) | Err(_) => break,
         }
     }
     let _ = file.flush().await;

@@ -13,11 +13,11 @@ import {
 } from '../../services/audio.js';
 import { startVisualization, stopVisualization } from '../../services/visualizer.js';
 import { addToRecentlyPlayed, updateCurrentStationInfo } from '../stations.js';
-import { setStationName, updateMetadata, updateBrandStatus, toast } from '../../ui/ui.js';
+import { setStationName, updateMetadata, updateBrandStatus, updateInsecureBadge, toast } from '../../ui/ui.js';
 import { getProxiedUrl, getProxyPcmUrl } from './proxy.js';
 import { fadeTo, targetVolume, cancelFade } from './volume.js';
 import { setConnectionState, scheduleReconnect, handleStreamDrop } from './connection.js';
-import { startMetadataPolling, stopMetadataPolling } from './metadata.js';
+import { fetchInitialMetadata } from './metadata.js';
 import { updateMediaSession } from './mediaSession.js';
 import { stopRecording } from './recording.js';
 
@@ -29,7 +29,7 @@ function onPlaySuccess() {
     // Fade the audio in from silence to the user's chosen volume
     fadeTo(targetVolume());
     updatePlayButton();
-    startMetadataPolling();
+    fetchInitialMetadata();
     // Build the audio graph (and resume it) so the equalizer applies even
     // when the visualizer is disabled.
     ensureAudioGraph();
@@ -236,6 +236,9 @@ export function playStation() {
 
     state.wantPlayback = true;
     state.lastTrackTitle = '';
+    // Clear any stale "unverified TLS" warning from the previous stream.
+    state.insecureStream = false;
+    updateInsecureBadge();
     clearTimeout(state.reconnectTimer);
     setConnectionState('connecting');
 
@@ -287,7 +290,6 @@ export function stopStation() {
     state.wantPlayback = false;
     state.reconnectAttempts = 0;
     clearTimeout(state.reconnectTimer);
-    stopMetadataPolling();
     if (state.isRecording) stopRecording();
 
     // Cut the stream and tear everything down once the fade-out finishes
@@ -347,6 +349,8 @@ export function updatePlayButton() {
     // Drive the LIVE badges and the "ON AIR" indicator
     dom.appContainer.classList.toggle('playing', state.isPlaying);
     updateBrandStatus();
+    // Keep the "Unverified" badge in sync (hides when stopped).
+    updateInsecureBadge();
 }
 
 // Report a play to Radio Browser (improves their click/popularity stats).

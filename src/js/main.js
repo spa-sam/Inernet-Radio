@@ -5,7 +5,7 @@
 
 import { state } from './core/state.js';
 import { dom } from './core/dom.js';
-import { APP_VERSION, SOURCES } from './core/constants.js';
+import { SOURCES } from './core/constants.js';
 import { hasTauriApi } from './core/util.js';
 import { applyLogo, resolveLogoSrc } from './core/favicon.js';
 import { loadApiServers, loadFilterOptions } from './services/api.js';
@@ -85,6 +85,18 @@ import {
     toast
 } from './ui/ui.js';
 
+// Resolve the app version from the Tauri runtime (Cargo.toml is the single
+// source of truth). Stays empty in a plain browser, where it is not displayed.
+async function loadAppVersion() {
+    if (hasTauriApi && window.__TAURI__.app && window.__TAURI__.app.getVersion) {
+        try {
+            state.appVersion = await window.__TAURI__.app.getVersion();
+        } catch (e) {
+            console.warn('Could not read app version:', e);
+        }
+    }
+}
+
 // Load persisted data from SQLite (or localStorage fallback) into shared state.
 async function initDatabase() {
     const ok = await openDatabase(hasTauriApi);
@@ -116,6 +128,9 @@ async function init() {
 
     // Load proxy port first
     await initProxy();
+
+    // Resolve the app version (used by the brand badge and About panel)
+    await loadAppVersion();
 
     // Listen for live track metadata pushed from the proxy stream
     setupStreamMetadataListener();
@@ -160,7 +175,7 @@ async function init() {
 
     // Reflect initial OFF AIR state and sync the About version label
     updateBrandStatus();
-    if (dom.aboutVersion) dom.aboutVersion.textContent = 'v' + APP_VERSION;
+    if (dom.aboutVersion) dom.aboutVersion.textContent = state.appVersion ? 'v' + state.appVersion : '';
 
     if (!state.settings.visualizerEnabled) {
         dom.visualizerCanvas.classList.add('hidden');
@@ -199,8 +214,13 @@ async function init() {
     // Render track history
     renderTrackHistory();
 
-    // Load the popular stations list
-    loadPopularStations();
+    // Open the Favorites tab first when the user already has favorites;
+    // otherwise default to Search with the popular stations list.
+    if (state.favorites.length > 0) {
+        setSource('favorites');
+    } else {
+        loadPopularStations();
+    }
 }
 
 // ===========================================================================
@@ -661,5 +681,9 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// Initialize and load
-init();
+// Initialize and load. A failure here (DB open, proxy handshake, …) would
+// otherwise vanish into an unhandled rejection, so surface it.
+init().catch((e) => {
+    console.error('Initialization failed:', e);
+    toast('Initialization failed: ' + (e && e.message ? e.message : e), 'error');
+});
