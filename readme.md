@@ -145,11 +145,23 @@ npm run build
 ## Releasing
 
 Releases are built by GitHub Actions. Bump the version in `package.json`,
-`src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` — the frontend reads it
-from the Tauri runtime, so there is nothing to change in `src/js/` — then push a
-`vX.Y.Z` tag:
+`package-lock.json` and `src-tauri/Cargo.toml` (`Cargo.lock` follows on the next
+build). `tauri.conf.json` carries no version — Tauri reads it from `Cargo.toml`,
+and the frontend reads it from the Tauri runtime, so there is nothing to change
+in `src/js/`. Then push a `vX.Y.Z` tag:
 
 ```bash
 git tag v1.2.3
 git push origin v1.2.3
 ```
+
+The tag triggers `.github/workflows/release.yml`, which builds and signs Windows
+and macOS bundles in parallel (~10–15 min) and uploads them together with the
+`latest.json` the updater reads.
+
+**The release is created as a draft, so the last step is manual:** open
+*Releases* on GitHub, pick the new draft and press **Publish release**. Until
+then `releases/latest/download/latest.json` still points at the previous
+release, so the in-app updater (Settings → About → *Check for updates*) reports
+no update — even though the build succeeded. A draft left unpublished is the
+usual reason a shipped version never reaches users.
