@@ -5,13 +5,12 @@
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::timeout;
 
 use crate::metadata::{IcyDemux, IcyEvent};
-use crate::proxy::{open_audio_stream, AsyncStream};
+use crate::proxy::{open_audio_stream, read_budget, AsyncStream};
 
 // Recording progress pushed to the frontend roughly once per second so the UI
 // can show elapsed time and the growing file size.
@@ -126,7 +125,7 @@ async fn record_single(
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        match timeout(Duration::from_secs(15), reader.read(&mut buf)).await {
+        match timeout(read_budget(total > 0), reader.read(&mut buf)).await {
             Ok(Ok(0)) => break, // stream ended
             Ok(Ok(n)) => {
                 if let Err(e) = file.write_all(&buf[..n]).await {
@@ -177,8 +176,9 @@ async fn record_split(
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        // A 15s timeout guards against a stalled connection.
-        match timeout(Duration::from_secs(15), demux.pull(&mut reader, &mut buf)).await {
+        // Guards against a stalled connection; the budget widens once bytes
+        // land, since from then on a slow disk can hold up the loop too.
+        match timeout(read_budget(total > 0), demux.pull(&mut reader, &mut buf)).await {
             Ok(Ok(IcyEvent::Audio(n))) => {
                 if let Err(e) = file.write_all(&buf[..n]).await {
                     emit_recording_error(app, format!("Write failed: {}", e));

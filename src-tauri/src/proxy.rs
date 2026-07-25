@@ -23,12 +23,36 @@ use crate::metadata::{parse_url, IcyDemux, IcyEvent, LiveMetadata};
 // frontend AudioWorklet always sees one rate/layout regardless of the source.
 const PCM_OUT_RATE: u32 = 48_000;
 
-// Maximum silence tolerated from an upstream server before the connection is
-// considered dead. A stalled-but-open socket produces no bytes and no error, so
-// without this the copy loops would wait forever: the <audio> element only
-// reports `waiting` (never `error`), and the frontend's auto-reconnect would
-// never be triggered. Live radio always pushes data well inside this window.
-const UPSTREAM_STALL_TIMEOUT: Duration = Duration::from_secs(15);
+// Stall detection for an upstream that keeps the socket open but stops sending:
+// it produces no bytes and no error, so an unbounded copy loop would wait
+// forever (the <audio> element only reports `waiting`, never `error`, so the
+// frontend's auto-reconnect is never triggered).
+//
+// Two separate budgets, because the read loop is NOT a pure upstream observer:
+// it blocks in write_all() while the consumer catches up (the webview buffers
+// tens of seconds of audio, and the decoder channel is bounded). That
+// backpressure propagates to the upstream via the TCP window, so on a perfectly
+// healthy stream the gap between two successful reads is routinely far longer
+// than the stream's bitrate would suggest. A short budget here therefore kills
+// live connections — which it did: every drop restarted playback, wiping the
+// track title before the next ICY metadata block could arrive.
+//
+// FIRST_BYTE covers the handshake, where the consumer has not begun draining
+// yet and a silent server means a dead stream. STALL is deliberately generous
+// so only a genuinely dead connection trips it.
+const UPSTREAM_FIRST_BYTE_TIMEOUT: Duration = Duration::from_secs(12);
+const UPSTREAM_STALL_TIMEOUT: Duration = Duration::from_secs(120);
+
+// The budget for the next read: tight until the stream has proven itself, then
+// generous for the rest of the connection. Shared with the recording path,
+// where an on-access virus scanner can stall the file write in the same way.
+pub(crate) fn read_budget(started: bool) -> Duration {
+    if started {
+        UPSTREAM_STALL_TIMEOUT
+    } else {
+        UPSTREAM_FIRST_BYTE_TIMEOUT
+    }
+}
 
 // Local proxy server state: the bound port and a per-launch access token.
 // The token is required on every /stream request so that only this app's
@@ -342,10 +366,13 @@ where
 {
     let mut buf = vec![0u8; 16384];
     let mut demux = IcyDemux::new(metaint);
+    let mut started = false;
     loop {
         // A stalled upstream must end the stream rather than hang: the client
-        // then sees the connection close and reconnects.
-        let event = match timeout(UPSTREAM_STALL_TIMEOUT, demux.pull(&mut reader, &mut buf)).await {
+        // then sees the connection close and reconnects. The budget widens once
+        // audio is flowing, because from then on this loop spends most of its
+        // time in write_all() waiting for the player, not on the upstream.
+        let event = match timeout(read_budget(started), demux.pull(&mut reader, &mut buf)).await {
             Ok(r) => r?,
             Err(_) => {
                 eprintln!("[proxy] upstream stalled for {}", url);
@@ -353,7 +380,10 @@ where
             }
         };
         match event {
-            IcyEvent::Audio(n) => writer.write_all(&buf[..n]).await?,
+            IcyEvent::Audio(n) => {
+                started = true;
+                writer.write_all(&buf[..n]).await?
+            }
             IcyEvent::Title(Some(title)) => {
                 let _ = app.emit(
                     "stream-metadata",
@@ -378,10 +408,14 @@ where
     W: tokio::io::AsyncWrite + Unpin,
 {
     let mut buf = vec![0u8; 16384];
+    let mut started = false;
     loop {
-        match timeout(UPSTREAM_STALL_TIMEOUT, reader.read(&mut buf)).await {
+        match timeout(read_budget(started), reader.read(&mut buf)).await {
             Ok(Ok(0)) => break,
-            Ok(Ok(n)) => writer.write_all(&buf[..n]).await?,
+            Ok(Ok(n)) => {
+                started = true;
+                writer.write_all(&buf[..n]).await?
+            }
             Ok(Err(e)) => return Err(e),
             Err(_) => {
                 eprintln!("[proxy] upstream stalled for {}", url);
@@ -624,11 +658,15 @@ where
     R: tokio::io::AsyncRead + Unpin,
 {
     let mut buf = vec![0u8; 16384];
+    let mut started = false;
     loop {
-        // Bounded so a silent upstream ends the stream instead of hanging.
-        match timeout(UPSTREAM_STALL_TIMEOUT, reader.read(&mut buf)).await {
+        // Bounded so a silent upstream ends the stream instead of hanging. The
+        // budget widens once bytes flow: send() blocks on the bounded decoder
+        // channel, so later reads legitimately wait on the consumer.
+        match timeout(read_budget(started), reader.read(&mut buf)).await {
             Ok(Ok(0)) => break,
             Ok(Ok(n)) => {
+                started = true;
                 if tx.send(buf[..n].to_vec()).await.is_err() {
                     break;
                 }
@@ -657,9 +695,11 @@ async fn pump_icy_to_channel<R>(
 {
     let mut buf = vec![0u8; 16384];
     let mut demux = IcyDemux::new(metaint);
+    let mut started = false;
     loop {
-        match timeout(UPSTREAM_STALL_TIMEOUT, demux.pull(&mut reader, &mut buf)).await {
+        match timeout(read_budget(started), demux.pull(&mut reader, &mut buf)).await {
             Ok(Ok(IcyEvent::Audio(n))) => {
+                started = true;
                 if tx.send(buf[..n].to_vec()).await.is_err() {
                     break;
                 }
@@ -966,6 +1006,17 @@ mod tests {
     fn first_stream_url_skips_hls() {
         let body = "File1=http://stream.fm/playlist.m3u8\n";
         assert_eq!(first_stream_url(body), None);
+    }
+
+    #[test]
+    fn read_budget_widens_once_the_stream_starts() {
+        // The tight budget must apply only before the first byte. Once audio
+        // flows, the read loop also waits on the consumer (the webview buffers
+        // tens of seconds; the decoder channel is bounded), so a short budget
+        // tears down healthy streams — which killed live track titles, because
+        // every teardown restarted playback before an ICY block could arrive.
+        assert!(read_budget(false) < read_budget(true));
+        assert!(read_budget(true) >= Duration::from_secs(60));
     }
 
     #[test]
