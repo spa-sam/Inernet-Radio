@@ -67,9 +67,16 @@ export const STATIONS_PAGE_SIZE = 30;
 // Playback intent & auto-reconnect. Reconnect delay grows exponentially
 // (RECONNECT_BASE_MS, then ×2 each attempt) and is capped at RECONNECT_MAX_MS,
 // so an unstable server is not hammered with fixed-interval retries.
+//
+// Two limits, because the two failure modes differ. A station that never
+// started is probably dead — give up quickly and say so. A station that was
+// playing and dropped is usually a transient network/server hiccup, and giving
+// up after ~14 s left unattended sessions (sleep timer, wake-to-radio alarm)
+// silent for the rest of the night; keep retrying for a few minutes instead.
 export const MAX_RECONNECT = 3;
+export const MAX_RECONNECT_LIVE = 12;
 export const RECONNECT_BASE_MS = 2000;
-export const RECONNECT_MAX_MS = 10000;
+export const RECONNECT_MAX_MS = 30000;
 
 // Volume fade duration (ms) for smooth play / stop / sleep-timer transitions
 export const FADE_DURATION = 600;

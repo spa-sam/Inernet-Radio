@@ -7,7 +7,7 @@ import { state } from './core/state.js';
 import { dom } from './core/dom.js';
 import { SOURCES } from './core/constants.js';
 import { hasTauriApi } from './core/util.js';
-import { applyLogo, resolveLogoSrc } from './core/favicon.js';
+import { applyLogo, resolveLogoSrc, initFaviconCache } from './core/favicon.js';
 import { loadApiServers, loadFilterOptions } from './services/api.js';
 import {
     openDatabase,
@@ -21,6 +21,7 @@ import { toggleVisualizer, changeVisualizerColor, cycleVisualizerStyle, refreshV
 import {
     initProxy,
     setVolume,
+    restoreVolume,
     toggleMute,
     togglePlay,
     prevStation,
@@ -124,7 +125,8 @@ async function initDatabase() {
 
 // Initialize
 async function init() {
-    dom.audioPlayer.volume = dom.volumeSlider.value / 100;
+    // Start silent until the persisted level is restored below.
+    dom.audioPlayer.volume = 0;
 
     // Load proxy port first
     await initProxy();
@@ -140,6 +142,10 @@ async function init() {
 
     // Initialize database
     await initDatabase();
+
+    // Load the negative favicon cache before anything renders a station logo,
+    // so known-bad favicons are not re-requested on the first paint.
+    await initFaviconCache();
 
     // Request notification permission
     requestNotificationPermission();
@@ -181,8 +187,8 @@ async function init() {
         dom.visualizerCanvas.classList.add('hidden');
     }
 
-    // Initialize volume control
-    setVolume(dom.volumeSlider.value);
+    // Restore the volume the user last set (persisted across restarts)
+    restoreVolume();
 
     // Render the editable genre preset chips and enable drag-reorder
     renderGenrePresets();

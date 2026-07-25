@@ -23,6 +23,13 @@ use crate::metadata::{parse_url, IcyDemux, IcyEvent, LiveMetadata};
 // frontend AudioWorklet always sees one rate/layout regardless of the source.
 const PCM_OUT_RATE: u32 = 48_000;
 
+// Maximum silence tolerated from an upstream server before the connection is
+// considered dead. A stalled-but-open socket produces no bytes and no error, so
+// without this the copy loops would wait forever: the <audio> element only
+// reports `waiting` (never `error`), and the frontend's auto-reconnect would
+// never be triggered. Live radio always pushes data well inside this window.
+const UPSTREAM_STALL_TIMEOUT: Duration = Duration::from_secs(15);
+
 // Local proxy server state: the bound port and a per-launch access token.
 // The token is required on every /stream request so that only this app's
 // frontend (which fetched it via get_proxy_port) can drive the proxy — other
@@ -39,20 +46,13 @@ pub(crate) struct ProxyInfo {
     pub(crate) token: String,
 }
 
-// Generate a random hex token without pulling in an RNG crate: each
-// RandomState is seeded with OS entropy, and finishing a hasher over no input
-// yields a value derived purely from that random seed. Two of them give a
-// 128-bit token — ample for a localhost capability check.
+// Generate a 128-bit hex token straight from the OS CSPRNG. (This used to be
+// derived from two std RandomState hashers, which share one thread-local seed
+// and so were neither independent nor documented as cryptographic.)
 fn random_token() -> String {
-    use std::hash::{BuildHasher, Hasher};
-    let mut token = String::with_capacity(32);
-    for _ in 0..2 {
-        let h = std::collections::hash_map::RandomState::new()
-            .build_hasher()
-            .finish();
-        token.push_str(&format!("{:016x}", h));
-    }
-    token
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).expect("OS random source unavailable");
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 // A boxed async stream — either a plain TCP or a TLS connection.
@@ -343,7 +343,16 @@ where
     let mut buf = vec![0u8; 16384];
     let mut demux = IcyDemux::new(metaint);
     loop {
-        match demux.pull(&mut reader, &mut buf).await? {
+        // A stalled upstream must end the stream rather than hang: the client
+        // then sees the connection close and reconnects.
+        let event = match timeout(UPSTREAM_STALL_TIMEOUT, demux.pull(&mut reader, &mut buf)).await {
+            Ok(r) => r?,
+            Err(_) => {
+                eprintln!("[proxy] upstream stalled for {}", url);
+                break;
+            }
+        };
+        match event {
             IcyEvent::Audio(n) => writer.write_all(&buf[..n]).await?,
             IcyEvent::Title(Some(title)) => {
                 let _ = app.emit(
@@ -356,6 +365,28 @@ where
             }
             IcyEvent::Title(None) => {}
             IcyEvent::End => break,
+        }
+    }
+    Ok(())
+}
+
+// Copy a non-ICY upstream to the client, bounded by the stall timeout. Replaces
+// a plain tokio::io::copy, which would wait indefinitely on a silent server.
+async fn pipe_plain<R, W>(mut reader: R, mut writer: W, url: &str) -> std::io::Result<()>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    let mut buf = vec![0u8; 16384];
+    loop {
+        match timeout(UPSTREAM_STALL_TIMEOUT, reader.read(&mut buf)).await {
+            Ok(Ok(0)) => break,
+            Ok(Ok(n)) => writer.write_all(&buf[..n]).await?,
+            Ok(Err(e)) => return Err(e),
+            Err(_) => {
+                eprintln!("[proxy] upstream stalled for {}", url);
+                break;
+            }
         }
     }
     Ok(())
@@ -594,14 +625,19 @@ where
 {
     let mut buf = vec![0u8; 16384];
     loop {
-        match reader.read(&mut buf).await {
-            Ok(0) => break,
-            Ok(n) => {
+        // Bounded so a silent upstream ends the stream instead of hanging.
+        match timeout(UPSTREAM_STALL_TIMEOUT, reader.read(&mut buf)).await {
+            Ok(Ok(0)) => break,
+            Ok(Ok(n)) => {
                 if tx.send(buf[..n].to_vec()).await.is_err() {
                     break;
                 }
             }
-            Err(_) => break,
+            Ok(Err(_)) => break,
+            Err(_) => {
+                eprintln!("[pcm] upstream stalled");
+                break;
+            }
         }
     }
 }
@@ -622,13 +658,13 @@ async fn pump_icy_to_channel<R>(
     let mut buf = vec![0u8; 16384];
     let mut demux = IcyDemux::new(metaint);
     loop {
-        match demux.pull(&mut reader, &mut buf).await {
-            Ok(IcyEvent::Audio(n)) => {
+        match timeout(UPSTREAM_STALL_TIMEOUT, demux.pull(&mut reader, &mut buf)).await {
+            Ok(Ok(IcyEvent::Audio(n))) => {
                 if tx.send(buf[..n].to_vec()).await.is_err() {
                     break;
                 }
             }
-            Ok(IcyEvent::Title(Some(title))) => {
+            Ok(Ok(IcyEvent::Title(Some(title)))) => {
                 let _ = app.emit(
                     "stream-metadata",
                     LiveMetadata {
@@ -637,9 +673,14 @@ async fn pump_icy_to_channel<R>(
                     },
                 );
             }
-            Ok(IcyEvent::Title(None)) => {}
-            // End of stream or a read error (interrupted connection): stop.
-            Ok(IcyEvent::End) | Err(_) => break,
+            Ok(Ok(IcyEvent::Title(None))) => {}
+            // End of stream, a read error (interrupted connection), or a
+            // stalled server: stop.
+            Ok(Ok(IcyEvent::End)) | Ok(Err(_)) => break,
+            Err(_) => {
+                eprintln!("[pcm] upstream stalled for {}", url);
+                break;
+            }
         }
     }
 }
@@ -808,9 +849,7 @@ async fn handle_proxy_client(
                     .await
                 }
                 // No metadata: forward the stream verbatim.
-                _ => tokio::io::copy(&mut remote_reader, &mut client_write_half)
-                    .await
-                    .map(|_| ()),
+                _ => pipe_plain(&mut remote_reader, &mut client_write_half, &target_url).await,
             };
             if let Err(e) = result {
                 if !is_disconnect(&e) {
@@ -927,6 +966,15 @@ mod tests {
     fn first_stream_url_skips_hls() {
         let body = "File1=http://stream.fm/playlist.m3u8\n";
         assert_eq!(first_stream_url(body), None);
+    }
+
+    #[test]
+    fn random_token_is_32_hex_chars_and_unique() {
+        let a = random_token();
+        let b = random_token();
+        assert_eq!(a.len(), 32);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b);
     }
 
     #[test]

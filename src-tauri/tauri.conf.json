@@ -15,8 +15,7 @@
         "resizable": true,
         "center": true,
         "minWidth": 420,
-        "minHeight": 560,
-        "devtools": true
+        "minHeight": 560
       }
     ],
     "security": {

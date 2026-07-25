@@ -4,34 +4,43 @@
 // repeated failed network hits while scrolling) and show the generated
 // placeholder straight away. The cache survives restarts via settings.
 
-import { state } from './state.js';
-import { saveSetting } from './db.js';
+import { loadCache, saveCache } from './db.js';
 import { generatePlaceholderLogo } from './util.js';
 
 const MAX_FAILED = 1000; // cap the persisted set so it cannot grow unbounded
 
-// Lazily-built Set of favicon URLs known to have failed to load.
-let failed = null;
-function failedSet() {
-    if (!failed) failed = new Set(state.settings.faviconFailed || []);
-    return failed;
+// Set of favicon URLs known to have failed to load. Filled once at startup by
+// initFaviconCache(); the lookups below are synchronous because they run during
+// list rendering.
+let failed = new Set();
+
+// Persisting on every single failure rewrote the whole array each time; a short
+// debounce coalesces the burst that a freshly scrolled list produces.
+let saveTimer = null;
+function persistFailed() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => saveCache('faviconFailed', [...failed]), 500);
+}
+
+// Load the persisted negative cache. Called once during startup.
+export async function initFaviconCache() {
+    const stored = await loadCache('faviconFailed');
+    if (Array.isArray(stored)) failed = new Set(stored);
 }
 
 // Record a favicon URL that failed to load and persist the updated set.
 export function noteFaviconFailed(url) {
     if (!url) return;
-    const set = failedSet();
-    if (set.has(url)) return;
-    set.add(url);
+    if (failed.has(url)) return;
+    failed.add(url);
     // Drop the oldest entries first if the cache grows past its cap.
-    while (set.size > MAX_FAILED) set.delete(set.values().next().value);
-    state.settings.faviconFailed = [...set];
-    saveSetting('faviconFailed', state.settings.faviconFailed);
+    while (failed.size > MAX_FAILED) failed.delete(failed.values().next().value);
+    persistFailed();
 }
 
 // Whether a favicon URL is worth attempting (present and not known-bad).
 export function isFaviconUsable(url) {
-    return !!url && !failedSet().has(url);
+    return !!url && !failed.has(url);
 }
 
 // Best logo source for a station without triggering a network attempt for a

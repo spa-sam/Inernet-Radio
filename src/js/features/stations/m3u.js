@@ -4,7 +4,7 @@
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 import { M3U_CONTENTS_API, M3U_CACHE_TTL_MS } from '../../core/constants.js';
-import { saveSetting } from '../../core/db.js';
+import { loadCache, saveCache } from '../../core/db.js';
 import { getProxiedUrl } from '../player.js';
 import { parseM3U } from './io.js';
 import { renderStations } from './render.js';
@@ -12,8 +12,11 @@ import { renderStations } from './render.js';
 // Return the genre list. Served from the cached copy in settings unless it is
 // missing, stale (older than the TTL) or a refresh is forced. A live fetch hits
 // the GitHub contents API once and is cached (per-IP rate limit, ~1 req/week).
+let genreCache;
+
 export async function getM3UGenres(forceRefresh = false) {
-    const cache = state.settings.m3uGenres;
+    if (genreCache === undefined) genreCache = await loadCache('m3uGenres');
+    const cache = genreCache;
     const fresh = cache && cache.fetchedAt && (Date.now() - cache.fetchedAt < M3U_CACHE_TTL_MS);
     if (!forceRefresh && fresh && Array.isArray(cache.list) && cache.list.length) {
         return cache.list;
@@ -30,8 +33,8 @@ export async function getM3UGenres(forceRefresh = false) {
                 url: it.download_url
             }))
             .sort((a, b) => a.label.localeCompare(b.label));
-        state.settings.m3uGenres = { list, fetchedAt: Date.now() };
-        saveSetting('m3uGenres', state.settings.m3uGenres);
+        genreCache = { list, fetchedAt: Date.now() };
+        saveCache('m3uGenres', genreCache);
         return list;
     } catch (e) {
         console.error('M3U genre list error:', e);

@@ -54,16 +54,28 @@ export async function startRecording() {
 }
 
 export async function stopRecording() {
+    if (!state.isRecording) return;
     const { invoke } = window.__TAURI__.core;
     try {
         await invoke('stop_recording');
     } catch (error) {
         console.error('Recording stop error:', error);
     }
+    clearRecordingUi();
+    toast('Recording saved', 'info');
+}
+
+// Tear the recording UI down after a backend-reported failure. No stop_recording
+// call: the backend task has already ended, and the caller shows the error.
+export function abortRecording() {
+    if (!state.isRecording) return;
+    clearRecordingUi();
+}
+
+function clearRecordingUi() {
     state.isRecording = false;
     updateRecordButton();
     if (dom.recStatus) dom.recStatus.classList.add('hidden');
-    toast('Recording saved', 'info');
 }
 
 function updateRecordButton() {

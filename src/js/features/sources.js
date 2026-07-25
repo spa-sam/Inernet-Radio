@@ -4,7 +4,7 @@
 // checks shown in Settings. Radio Browser paging stays in search.js.
 
 import { state } from '../core/state.js';
-import { saveSetting } from '../core/db.js';
+import { saveSetting, loadCache, saveCache } from '../core/db.js';
 import { M3U_CONTENTS_API, M3U_CACHE_TTL_MS } from '../core/constants.js';
 import { fetchSomaStations } from './stations/catalog.js';
 import { fetchM3UStations } from './stations/m3u.js';
@@ -30,17 +30,25 @@ function fresh(cache, ttl) {
     return cache && cache.fetchedAt && Array.isArray(cache.list) && (Date.now() - cache.fetchedAt < ttl);
 }
 
+// Catalogue caches, read from the `caches` table the first time the source is
+// actually searched. They are large (the M3U index runs to thousands of
+// stations), so they are deliberately not part of the startup settings load.
+let somaCache;
+let m3uCache;
+
 async function ensureSomaCache() {
-    const cache = state.settings.somaCache;
-    if (fresh(cache, SOMA_TTL_MS)) return cache.list;
+    if (somaCache === undefined) somaCache = await loadCache('somaCache');
+    if (fresh(somaCache, SOMA_TTL_MS)) return somaCache.list;
+    const stale = somaCache;
     try {
         const list = await fetchSomaStations();
-        state.settings.somaCache = { list, fetchedAt: Date.now() };
-        saveSetting('somaCache', state.settings.somaCache);
+        somaCache = { list, fetchedAt: Date.now() };
+        saveCache('somaCache', somaCache);
         return list;
     } catch (e) {
         console.warn('SomaFM cache refresh failed:', e);
-        return (cache && cache.list) || [];
+        somaCache = stale;
+        return (stale && stale.list) || [];
     }
 }
 
@@ -48,7 +56,8 @@ async function ensureSomaCache() {
 // repo's aggregate "everything" file (one request) rather than fetching every
 // genre playlist; falls back to a stale cache on failure.
 async function ensureM3UIndex() {
-    const cache = state.settings.m3uIndex;
+    if (m3uCache === undefined) m3uCache = await loadCache('m3uIndex');
+    const cache = m3uCache;
     if (fresh(cache, M3U_CACHE_TTL_MS)) return cache.list;
     try {
         const res = await fetch(M3U_CONTENTS_API);
@@ -61,8 +70,8 @@ async function ensureM3UIndex() {
         const pick = aggregates.find(it => /everything/i.test(it.name)) || aggregates[0];
         if (!pick || !pick.download_url) throw new Error('no aggregate playlist found');
         const list = await fetchM3UStations(pick.download_url, M3U_INDEX_CAP);
-        state.settings.m3uIndex = { list, fetchedAt: Date.now() };
-        saveSetting('m3uIndex', state.settings.m3uIndex);
+        m3uCache = { list, fetchedAt: Date.now() };
+        saveCache('m3uIndex', m3uCache);
         return list;
     } catch (e) {
         console.warn('M3U index refresh failed:', e);
@@ -92,9 +101,12 @@ export async function localSearch(query, tag, perSourceCap = 100) {
     const out = [];
 
     if (isSourceEnabled('custom')) {
+        let n = 0;
         for (const s of state.customStations) {
-            if (matches(s, q, t)) out.push({ ...s, __source: 'custom' });
-            if (out.length >= perSourceCap) break;
+            if (matches(s, q, t)) { out.push({ ...s, __source: 'custom' }); n++; }
+            // Cap this source's own matches, not the combined result — the
+            // latter shrank each later source's budget.
+            if (n >= perSourceCap) break;
         }
     }
 

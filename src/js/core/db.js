@@ -2,8 +2,14 @@
 // Single source of truth for all database and localStorage reads/writes.
 // Exports a live `db` binding so importers always see the current connection.
 
-// Number of EQ frequency bands; kept in sync with EQ_BANDS in main.js.
-const EQ_BAND_COUNT = 5;
+import { EQ_BANDS } from './constants.js';
+
+// Bulky, regenerable data (source catalogues, negative favicon cache) lives in
+// its own `caches` table rather than in `settings`. Settings are all read at
+// startup, so keeping multi-megabyte catalogues there meant parsing them on
+// every launch even when the owning source was disabled. These keys are
+// skipped by the settings loader and fetched on demand via loadCache().
+export const CACHE_KEYS = ['somaCache', 'm3uIndex', 'm3uGenres', 'faviconFailed'];
 
 // Live SQLite connection. Set by openDatabase(); importers read the live binding.
 export let db = null;
@@ -109,6 +115,33 @@ async function createTables() {
             value TEXT
         )
     `);
+    await db.execute(`
+        CREATE TABLE IF NOT EXISTS caches (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    `);
+    await migrateCachesOutOfSettings();
+}
+
+// One-off migration for databases written before the `caches` table existed:
+// move the bulky cache rows out of `settings` so they stop being loaded (and
+// JSON-parsed) on every startup. A no-op once the settings rows are gone.
+async function migrateCachesOutOfSettings() {
+    const placeholders = CACHE_KEYS.map((_, i) => `$${i + 1}`).join(', ');
+    try {
+        await db.execute(
+            `INSERT OR REPLACE INTO caches (key, value)
+             SELECT key, value FROM settings WHERE key IN (${placeholders})`,
+            CACHE_KEYS
+        );
+        await db.execute(
+            `DELETE FROM settings WHERE key IN (${placeholders})`,
+            CACHE_KEYS
+        );
+    } catch (e) {
+        console.error('Cache migration error:', e);
+    }
 }
 
 // ------------------------------------------------------------------
@@ -179,10 +212,12 @@ export async function loadAllDataFromDb() {
                 result.lastStation = value && typeof value === 'object' ? value : null;
             } else if (row.key === 'eqGains') {
                 // Guard against a malformed array breaking the equalizer UI.
-                if (Array.isArray(value) && value.length === EQ_BAND_COUNT) {
+                // The length must track EQ_BANDS: a stale hard-coded count here
+                // silently discarded every saved curve when the band set grew.
+                if (Array.isArray(value) && value.length === EQ_BANDS.length) {
                     result.settings.eqGains = value;
                 }
-            } else {
+            } else if (!CACHE_KEYS.includes(row.key)) {
                 result.settings[row.key] = value;
             }
         });
@@ -214,10 +249,61 @@ export function loadAllDataFromStorage() {
         result.trackHistory = JSON.parse(localStorage.getItem('trackHistory') || '[]');
         result.lastStation = JSON.parse(localStorage.getItem('lastStation') || 'null');
         result.settings = JSON.parse(localStorage.getItem('settings') || '{}');
+        // Caches have their own storage keys here too; drop any legacy copies
+        // that older builds folded into the settings blob.
+        for (const key of CACHE_KEYS) delete result.settings[key];
+        if (!Array.isArray(result.settings.eqGains) ||
+            result.settings.eqGains.length !== EQ_BANDS.length) {
+            delete result.settings.eqGains;
+        }
     } catch (e) {
         console.error('localStorage load error:', e);
     }
     return result;
+}
+
+// ------------------------------------------------------------------
+// Cache accessors (`caches` table, or a per-key localStorage entry in
+// the fallback path). Callers load a cache the first time they need it
+// rather than paying for it on every startup.
+// ------------------------------------------------------------------
+export async function loadCache(key) {
+    if (db) {
+        try {
+            const rows = await db.select('SELECT value FROM caches WHERE key = $1', [key]);
+            if (rows.length === 0) return null;
+            return JSON.parse(rows[0].value);
+        } catch (e) {
+            console.error('Load cache error:', e);
+            return null;
+        }
+    }
+    try {
+        const raw = localStorage.getItem('cache:' + key);
+        if (raw !== null) return JSON.parse(raw);
+        // Legacy location: the settings blob written by older builds.
+        const legacy = JSON.parse(localStorage.getItem('settings') || '{}');
+        return legacy[key] ?? null;
+    } catch (e) {
+        console.error('Load cache error:', e);
+        return null;
+    }
+}
+
+export async function saveCache(key, value) {
+    if (db) {
+        await execDb(
+            'INSERT OR REPLACE INTO caches (key, value) VALUES ($1, $2)',
+            [key, JSON.stringify(value)],
+            'Save cache'
+        );
+        return;
+    }
+    try {
+        localStorage.setItem('cache:' + key, JSON.stringify(value));
+    } catch (e) {
+        console.error('localStorage cache save error:', e);
+    }
 }
 
 // ------------------------------------------------------------------

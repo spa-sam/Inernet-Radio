@@ -25,6 +25,7 @@ import { stopRecording } from './recording.js';
 function onPlaySuccess() {
     state.isPlaying = true;
     state.reconnectAttempts = 0;
+    state.hadSuccessfulPlayback = true;
     clearTimeout(state.reconnectTimer);
     // Fade the audio in from silence to the user's chosen volume
     fadeTo(targetVolume());
@@ -289,6 +290,7 @@ function playViaMediaElement(streamUrl, station) {
 export function stopStation() {
     state.wantPlayback = false;
     state.reconnectAttempts = 0;
+    state.hadSuccessfulPlayback = false;
     clearTimeout(state.reconnectTimer);
     if (state.isRecording) stopRecording();
 
@@ -366,6 +368,9 @@ function reportStationClick(station) {
 
 // Select and play a station
 export function selectStation(station, itemElement) {
+    // A different station starts with a clean reconnect history.
+    state.hadSuccessfulPlayback = false;
+    state.reconnectAttempts = 0;
     state.currentStation = station;
     state.lastStation = station;
     saveSetting('lastStation', station);

@@ -2,6 +2,8 @@
 
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
+import { FADE_DURATION } from '../../core/constants.js';
+import { saveSetting } from '../../core/db.js';
 
 // Read/write the active output level (0..1). On the PCM path loudness lives on
 // the master GainNode (the <audio> element is silent there); otherwise it is the
@@ -20,7 +22,9 @@ export function setOutputLevel(v) {
     }
 }
 
-export function setVolume(volume) {
+// Apply a volume level (0..100) to the UI and the output. `persist` is false
+// for programmatic restores so replaying the saved value is not written back.
+export function setVolume(volume, persist = true) {
     // An explicit volume change overrides any running fade animation
     cancelFade();
     volume = Math.max(0, Math.min(100, parseInt(volume) || 0));
@@ -30,6 +34,20 @@ export function setVolume(volume) {
     dom.volumeSlider.style.setProperty('--vol', volume + '%');
     dom.volumeValueLabel.textContent = volume + '%';
     dom.volumeBar.classList.toggle('muted', volume === 0);
+
+    if (persist && state.settings.volume !== volume) {
+        state.settings.volume = volume;
+        saveSetting('volume', volume);
+    }
+}
+
+// Restore the persisted volume at startup (and the pre-mute level, so
+// unmuting after a restart returns to the level the user last chose).
+export function restoreVolume() {
+    const saved = parseInt(state.settings.volume, 10);
+    const volume = Number.isFinite(saved) ? Math.max(0, Math.min(100, saved)) : 70;
+    if (volume > 0) state.lastVolumeBeforeMute = volume;
+    setVolume(volume, false);
 }
 
 // The user's chosen volume as a 0..1 gain (independent of any active fade)
@@ -57,7 +75,6 @@ export function fadeTo(target, onDone) {
         return;
     }
     const startTime = performance.now();
-    const FADE_DURATION = 600; // ms
     const step = (now) => {
         const t = Math.min(1, (now - startTime) / FADE_DURATION);
         const eased = 1 - Math.pow(1 - t, 2); // ease-out

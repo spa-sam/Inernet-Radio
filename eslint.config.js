@@ -32,6 +32,15 @@ export default [
         }
     },
     {
+        // Unit tests run under the Node test runner, not in the browser.
+        files: ['tests/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: { ...globals.node }
+        }
+    },
+    {
         // AudioWorklet runs in a separate global scope with its own globals.
         files: ['src/worklets/**/*.js'],
         languageOptions: {

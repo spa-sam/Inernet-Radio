@@ -7,6 +7,23 @@ import { dom } from '../../core/dom.js';
 import { hasTauriApi, formatTimer } from '../../core/util.js';
 import { applyMarquee, updateInsecureBadge, toast } from '../../ui/ui.js';
 import { showSongNotification, updateMediaSession } from './mediaSession.js';
+import { abortRecording } from './recording.js';
+
+// Display a freshly parsed track title and record it as the current one.
+// state.lastTrackTitle must be updated here rather than as a side effect of
+// showSongNotification: without notification permission it stayed empty, and
+// setConnectionState('playing') — which fires after every rebuffer — then wiped
+// the visible title until the next ICY metadata block arrived.
+function showTrackTitle(title) {
+    if (!title) return;
+    dom.nowPlayingTrack.textContent = '♪ ' + title;
+    dom.nowPlayingTrack.classList.remove('status-line', 'status-error');
+    applyMarquee(dom.nowPlayingTrack);
+    const stationName = state.currentStation ? state.currentStation.name : '';
+    showSongNotification(stationName, title);
+    state.lastTrackTitle = title;
+    updateMediaSession(title);
+}
 
 async function fetchStreamMetadata(url) {
     if (!hasTauriApi) return;
@@ -16,11 +33,7 @@ async function fetchStreamMetadata(url) {
         const metadata = await invoke('get_stream_metadata', { url });
 
         if (metadata && metadata.title) {
-            const cleanTitle = metadata.title.trim();
-            dom.nowPlayingTrack.textContent = '♪ ' + cleanTitle;
-            applyMarquee(dom.nowPlayingTrack);
-            showSongNotification(state.currentStation.name, cleanTitle);
-            updateMediaSession(cleanTitle);
+            showTrackTitle(metadata.title.trim());
         }
     } catch (error) {
         console.error('Metadata fetch error:', error);
@@ -54,12 +67,7 @@ export async function setupStreamMetadataListener() {
             if (!state.isPlaying || !state.currentStation) return;
             const current = state.currentStation.url_resolved || state.currentStation.url;
             if (payload.url && current && payload.url !== current) return;
-            const title = (payload.title || '').trim();
-            if (!title) return;
-            dom.nowPlayingTrack.textContent = '♪ ' + title;
-            applyMarquee(dom.nowPlayingTrack);
-            showSongNotification(state.currentStation.name, title);
-            updateMediaSession(title);
+            showTrackTitle((payload.title || '').trim());
         });
         await listen('stream-insecure', (event) => {
             if (!state.isPlaying || !state.currentStation) return;
@@ -72,6 +80,14 @@ export async function setupStreamMetadataListener() {
                 updateInsecureBadge();
                 toast('Insecure connection: TLS certificate not verified', 'error');
             }
+        });
+        // The backend spawns the recording task and returns immediately, so a
+        // failure to open the stream or create the file surfaces here rather
+        // than from the start_recording call itself.
+        await listen('recording-error', (event) => {
+            const message = (event.payload && event.payload.message) || 'Recording failed';
+            toast('Recording failed: ' + message, 'error');
+            abortRecording();
         });
         await listen('recording-progress', (event) => {
             if (!state.isRecording) return;

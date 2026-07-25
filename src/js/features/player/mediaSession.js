@@ -36,15 +36,15 @@ export function requestNotificationPermission() {
     }
 }
 
+// Notify on a song change. Tracking of the current title is NOT done here —
+// state.lastTrackTitle is owned by showTrackTitle() in metadata.js, which runs
+// regardless of whether notifications are permitted.
 export function showSongNotification(stationName, trackTitle) {
-    if ('Notification' in window && Notification.permission === 'granted') {
-        if (trackTitle && trackTitle !== state.lastTrackTitle) {
-            state.lastTrackTitle = trackTitle;
-            new Notification(stationName, {
-                body: `Now playing: ${trackTitle}`,
-                icon: resolveLogoSrc(state.currentStation),
-                silent: true
-            });
-        }
-    }
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (!trackTitle || trackTitle === state.lastTrackTitle) return;
+    new Notification(stationName, {
+        body: `Now playing: ${trackTitle}`,
+        icon: resolveLogoSrc(state.currentStation),
+        silent: true
+    });
 }

@@ -81,6 +81,11 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      # Unit tests for the pure frontend helpers (playlist parsers, saved-order
+      # reordering, EQ preset/band consistency, formatting helpers).
+      - name: Run frontend unit tests
+        run: npm test
+
   # ------------------------------------------------------------------
   # Windows build: compile a release binary to ensure it links on the
   # actual target platform (no installer; just the binary).

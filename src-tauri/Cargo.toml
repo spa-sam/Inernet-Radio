@@ -19,6 +19,8 @@ tokio = { version = "1", features = ["net", "io-util", "time", "rt-multi-thread"
 native-tls = "0.2"
 tokio-native-tls = "0.3"
 percent-encoding = "2.3"
+# OS CSPRNG for the per-launch proxy access token.
+getrandom = "0.3"
 # Pure-Rust audio decoder for the macOS PCM path (decode stream -> PCM so the
 # Web Audio graph / EQ is fed via an AudioWorklet). Default features add ogg /
 # flac / wav / vorbis; mp3 + aac + isomp4 are enabled explicitly.

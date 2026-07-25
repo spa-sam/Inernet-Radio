@@ -21,6 +21,20 @@ struct RecordingProgress {
     bytes: u64,
 }
 
+// Emitted when a recording cannot start or dies early. start_recording returns
+// as soon as the task is spawned, so without this the UI would keep showing a
+// REC indicator for a recording that never wrote a byte.
+#[derive(Serialize, Clone)]
+struct RecordingError {
+    message: String,
+}
+
+fn emit_recording_error(app: &tauri::AppHandle, message: impl Into<String>) {
+    let message = message.into();
+    eprintln!("[rec] {}", message);
+    let _ = app.emit("recording-error", RecordingError { message });
+}
+
 // Tracks the currently active recording. The stop flag is shared with the
 // recording task: setting it to true (via stop_recording or natural stream
 // end) terminates the write loop. `is_recording` treats a set flag as "done".
@@ -84,7 +98,7 @@ async fn record_stream(
             // No ICY metadata available: fall back to a single continuous file.
             _ => record_single(&app, reader, &path, &stop).await,
         },
-        Err(e) => eprintln!("[rec] open error for {}: {:?}", url, e),
+        Err(e) => emit_recording_error(&app, format!("Cannot open stream: {}", e)),
     }
     // Mark the recording as finished so is_recording() reports false.
     stop.store(true, Ordering::Relaxed);
@@ -100,7 +114,7 @@ async fn record_single(
     let mut file = match tokio::fs::File::create(path).await {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("[rec] cannot create file {}: {:?}", path, e);
+            emit_recording_error(app, format!("Cannot create {}: {}", path, e));
             return;
         }
     };
@@ -115,17 +129,24 @@ async fn record_single(
         match timeout(Duration::from_secs(15), reader.read(&mut buf)).await {
             Ok(Ok(0)) => break, // stream ended
             Ok(Ok(n)) => {
-                if file.write_all(&buf[..n]).await.is_err() {
+                if let Err(e) = file.write_all(&buf[..n]).await {
+                    emit_recording_error(app, format!("Write failed: {}", e));
                     break;
                 }
                 total += n as u64;
                 emit_recording_progress(app, &started, total, &mut last_sec);
             }
-            Ok(Err(_)) => break, // read error
-            Err(_) => break,     // stalled stream
+            Ok(Err(e)) => {
+                emit_recording_error(app, format!("Stream read failed: {}", e));
+                break;
+            }
+            Err(_) => break, // stalled stream
         }
     }
     let _ = file.flush().await;
+    if total == 0 {
+        emit_recording_error(app, "Stream produced no data");
+    }
 }
 
 // Record an ICY stream, starting a new file each time the StreamTitle changes.
@@ -143,7 +164,7 @@ async fn record_split(
     let mut file = match tokio::fs::File::create(segment_path(base, index, None)).await {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("[rec] cannot create segment: {:?}", e);
+            emit_recording_error(app, format!("Cannot create recording segment: {}", e));
             return;
         }
     };
@@ -159,7 +180,8 @@ async fn record_split(
         // A 15s timeout guards against a stalled connection.
         match timeout(Duration::from_secs(15), demux.pull(&mut reader, &mut buf)).await {
             Ok(Ok(IcyEvent::Audio(n))) => {
-                if file.write_all(&buf[..n]).await.is_err() {
+                if let Err(e) = file.write_all(&buf[..n]).await {
+                    emit_recording_error(app, format!("Write failed: {}", e));
                     break;
                 }
                 total += n as u64;
@@ -172,7 +194,7 @@ async fn record_split(
                 match tokio::fs::File::create(segment_path(base, index, Some(&title))).await {
                     Ok(f) => file = f,
                     Err(e) => {
-                        eprintln!("[rec] cannot create segment: {:?}", e);
+                        emit_recording_error(app, format!("Cannot create segment: {}", e));
                         break;
                     }
                 }
@@ -183,6 +205,9 @@ async fn record_split(
         }
     }
     let _ = file.flush().await;
+    if total == 0 {
+        emit_recording_error(app, "Stream produced no data");
+    }
 }
 
 // Emit a recording-progress event at most once per elapsed second.

@@ -25,6 +25,10 @@ export const state = {
     wantPlayback: false,
     reconnectAttempts: 0,
     reconnectTimer: null,
+    // True once the current station has actually produced audio. A drop after
+    // that gets a much larger reconnect budget than a station that never
+    // started (see reconnectBudget() in connection.js).
+    hadSuccessfulPlayback: false,
     lastTrackTitle: '',
     // True when the current stream's TLS certificate could not be validated and
     // the proxy connected anyway (surfaced as an "unverified" warning).
@@ -91,8 +95,10 @@ export const state = {
     copyResetTimer: null,
     toastContainer: null,
 
-    // Settings (persisted)
+    // Settings (persisted). Bulky regenerable catalogues are NOT kept here —
+    // they live in the `caches` store and are loaded on demand (see db.js).
     settings: {
+        volume: 70,
         compactMode: false,
         wideMode: false,
         visualizerEnabled: true,
@@ -105,16 +111,11 @@ export const state = {
         recordSplit: false,
         alarmEnabled: false,
         alarmTime: '07:00',
-        m3uGenres: null,
         genrePresets: null,
         // Unified-search source toggles (M3U off by default — heavy to index)
         sources: { radioBrowser: true, somafm: true, m3u: false, custom: true },
-        somaCache: null,   // { list, fetchedAt } — SomaFM channels for local search
-        m3uIndex: null,    // { list, fetchedAt } — aggregated M3U stations for search
         radioMainWidth: null, // px width of the player column in wide view (resizable)
         favoritesOrder: [],
-        customOrder: [],
-        // Favicon URLs known to fail loading — skipped to avoid repeat fetches.
-        faviconFailed: []
+        customOrder: []
     }
 };

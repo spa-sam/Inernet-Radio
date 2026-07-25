@@ -2,12 +2,20 @@
 
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
-import { MAX_RECONNECT, RECONNECT_BASE_MS, RECONNECT_MAX_MS } from '../../core/constants.js';
+import {
+    MAX_RECONNECT, MAX_RECONNECT_LIVE, RECONNECT_BASE_MS, RECONNECT_MAX_MS
+} from '../../core/constants.js';
 import { applyMarquee } from '../../ui/ui.js';
 import { stopVisualization } from '../../services/visualizer.js';
 import { updatePlayButton, playStation } from './playback.js';
 
 // Show connection / playback status in the now-playing line
+// How many reconnects to attempt before giving up, based on whether this
+// station has ever actually played (see MAX_RECONNECT_LIVE in constants.js).
+function reconnectBudget() {
+    return state.hadSuccessfulPlayback ? MAX_RECONNECT_LIVE : MAX_RECONNECT;
+}
+
 export function setConnectionState(phase) {
     dom.nowPlayingTrack.classList.remove('status-line', 'status-error');
     if (phase === 'connecting') {
@@ -17,7 +25,8 @@ export function setConnectionState(phase) {
         dom.nowPlayingTrack.textContent = '⏳ Buffering…';
         dom.nowPlayingTrack.classList.add('status-line');
     } else if (phase === 'reconnecting') {
-        dom.nowPlayingTrack.textContent = `🔄 Reconnecting… (${state.reconnectAttempts}/${MAX_RECONNECT})`;
+        dom.nowPlayingTrack.textContent =
+            `🔄 Reconnecting… (${state.reconnectAttempts}/${reconnectBudget()})`;
         dom.nowPlayingTrack.classList.add('status-line');
     } else if (phase === 'error') {
         dom.nowPlayingTrack.textContent = '⚠ Could not play this station';
@@ -32,7 +41,7 @@ export function setConnectionState(phase) {
 // Schedule an automatic reconnect after the stream drops
 export function scheduleReconnect() {
     clearTimeout(state.reconnectTimer);
-    if (state.reconnectAttempts >= MAX_RECONNECT) {
+    if (state.reconnectAttempts >= reconnectBudget()) {
         state.wantPlayback = false;
         state.isPlaying = false;
         updatePlayButton();

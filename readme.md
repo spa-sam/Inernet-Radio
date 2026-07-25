@@ -15,8 +15,6 @@ equalizer — in a dark “studio” interface.
 |--------------------|--------|
 | ![Sources](assets/settings.png) | ![Search](assets/search.png) |
 
-> Drop the images into an `assets/` folder with the names above.
-
 ## Features
 
 ### Stations & search
@@ -37,12 +35,15 @@ equalizer — in a dark “studio” interface.
   (JSON, M3U / M3U8, PLS, OPML).
 
 ### Playback
-- HLS support, automatic reconnect on stream drops, smooth fade in/out,
-  volume and mute.
+- HLS support, smooth fade in/out, volume and mute (the level is remembered
+  between sessions).
+- **Automatic reconnect** with exponential backoff. A station that was already
+  playing gets a long retry budget, so a passing network glitch does not end an
+  unattended session; one that never started is given up on quickly.
 - **Live track titles** (ICY metadata) parsed through a built‑in local
   CORS proxy, so streams that browsers normally block just work.
 - **Stream recording** — one continuous file, or split into one file per track.
-- **5‑band equalizer** with presets and optional volume normalization.
+- **10‑band equalizer** with presets and optional volume normalization.
 - **Audio spectrum visualizer** (multiple styles, colour and sensitivity).
 - **OS media‑session** integration (media keys / lock‑screen controls) and
   optional song‑change notifications.
@@ -70,7 +71,12 @@ Keyboard: `Space` — play / stop (ignored while typing in a field).
 
 Settings, favorites, custom stations and history are stored locally in
 **SQLite** (with a `localStorage` fallback). Nothing is sent anywhere except the
-stream and metadata requests above.
+stream and metadata requests above. The app works fully offline apart from those
+requests — the UI font is bundled, not fetched from a CDN.
+
+Regenerable bulk data (the SomaFM and M3U catalogue caches, the negative favicon
+cache) lives in a separate `caches` table and is read on demand, so it never
+slows down startup. Deleting those rows only costs a re-fetch.
 
 ## Tech stack
 
@@ -82,9 +88,23 @@ stream and metadata requests above.
 
 The local proxy validates TLS certificates first and only falls back to an
 unverified handshake when a station's certificate is expired/mismatched (logged
-on stderr). Each launch generates a random access token that the frontend must
+on stderr, and surfaced in the UI as an "Unverified" badge). Each launch
+generates a random access token from the OS CSPRNG that the frontend must
 present on every `/stream` request, so the proxy cannot be used as an open relay
-by other local processes.
+by other local processes. Every upstream read is bounded by a 15 s stall timeout,
+so a server that goes silent without closing the socket ends the stream and
+triggers a reconnect instead of hanging.
+
+### Tests
+
+```bash
+npm test
+```
+
+Runs the frontend unit tests (playlist parsers, saved-order reordering, EQ
+band/preset consistency, formatting helpers) with the built-in Node test runner —
+no test framework needed. The Rust parsers have their own `cargo test` suite.
+CI runs `cargo fmt`, `cargo clippy`, `cargo test`, ESLint and `npm test`.
 
 ## Known limitations
 
@@ -125,8 +145,9 @@ npm run build
 ## Releasing
 
 Releases are built by GitHub Actions. Bump the version in `package.json`,
-`src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` and `src/js/core/constants.js`,
-then push a `vX.Y.Z` tag:
+`src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` — the frontend reads it
+from the Tauri runtime, so there is nothing to change in `src/js/` — then push a
+`vX.Y.Z` tag:
 
 ```bash
 git tag v1.2.3
