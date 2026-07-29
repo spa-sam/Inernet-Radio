@@ -38,5 +38,5 @@ export function showFavorites() {
     }
     state.currentStationsList = state.favorites;
     renderStations(state.favorites);
-    setupDragReorder(dom.stationsList, state.favorites, saveFavoritesOrder);
+    setupDragReorder(dom.stationsList, () => state.favorites, saveFavoritesOrder);
 }

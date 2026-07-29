@@ -53,6 +53,21 @@ pub(crate) fn parse_url(url: &str) -> Option<(String, u16, String, bool)> {
     Some((host, port, path.to_string(), is_ssl))
 }
 
+// Largest `icy-metaint` we will act on. Real Shoutcast/Icecast servers use
+// 8192–65536; the value decides how big a buffer we allocate to skip past the
+// audio, and it arrives from whatever host the station URL points at. Left
+// unbounded, `icy-metaint: 999999999999` from a hostile or broken server turns
+// one Play into a terabyte allocation and aborts the whole process.
+const MAX_METAINT: usize = 1024 * 1024;
+
+pub(crate) fn parse_metaint(value: &str) -> Option<usize> {
+    value
+        .trim()
+        .parse::<usize>()
+        .ok()
+        .filter(|n| *n > 0 && *n <= MAX_METAINT)
+}
+
 // Read ICY metadata from a generic stream (HTTP or HTTPS)
 async fn read_icy_metadata_from_stream<S>(
     stream: S,
@@ -102,7 +117,7 @@ where
             let lower = line_trimmed.to_lowercase();
             if lower.starts_with("icy-metaint:") {
                 if let Some(val) = line_trimmed.split(':').nth(1) {
-                    icy_metaint = val.trim().parse().ok();
+                    icy_metaint = parse_metaint(val);
                 }
             } else if lower.starts_with("icy-name:") {
                 if let Some(val) = line_trimmed.split(':').nth(1) {
@@ -424,6 +439,24 @@ mod tests {
     fn parse_stream_title_extracts_title() {
         let meta = "StreamTitle='Artist - Song';StreamUrl='http://x';";
         assert_eq!(parse_stream_title(meta), Some("Artist - Song".to_string()));
+    }
+
+    // The header comes from whatever host the station URL points at, and the
+    // probe path allocates a buffer of that size to skip past the audio.
+    #[test]
+    fn parse_metaint_rejects_absurd_and_zero_values() {
+        assert_eq!(parse_metaint("16000"), Some(16000));
+        assert_eq!(parse_metaint("  8192 "), Some(8192));
+        assert_eq!(parse_metaint(&MAX_METAINT.to_string()), Some(MAX_METAINT));
+        // One past the cap, a 4 GiB buffer, and a terabyte are all refused.
+        assert_eq!(parse_metaint(&(MAX_METAINT + 1).to_string()), None);
+        assert_eq!(parse_metaint("4294967295"), None);
+        assert_eq!(parse_metaint("999999999999"), None);
+        // Zero would make every read a metadata boundary; junk is not a number.
+        assert_eq!(parse_metaint("0"), None);
+        assert_eq!(parse_metaint("-1"), None);
+        assert_eq!(parse_metaint("banana"), None);
+        assert_eq!(parse_metaint(""), None);
     }
 
     #[test]

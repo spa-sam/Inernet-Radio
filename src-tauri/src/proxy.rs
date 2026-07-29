@@ -303,7 +303,10 @@ pub(crate) async fn open_audio_stream(
                 match name.as_str() {
                     "content-type" => content_type = value.to_string(),
                     "location" => location = value.to_string(),
-                    "icy-metaint" => metaint = value.parse().ok(),
+                    // Bounded: an absurd metaint means the demuxer would count
+                    // toward a boundary it never reaches, so no track title
+                    // would ever appear. Treat such a stream as plain audio.
+                    "icy-metaint" => metaint = crate::metadata::parse_metaint(value),
                     _ => {}
                 }
             }

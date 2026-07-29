@@ -26,6 +26,8 @@ const listRegistry = new WeakMap();
 // stationuuid so nothing depends on those being unique, and so entries are
 // collected along with the rows they describe.
 const rowEntries = new WeakMap();
+// container -> () => backing array, resolved at drop time (see setupDragReorder).
+const dragListGetters = new WeakMap();
 
 // Register what happens when a row in `container` is activated.
 // `onSelect(entry, row)` fires for a click/Enter on the row itself;
@@ -43,6 +45,16 @@ export function bindStationList(container, { onSelect, onAction } = {}) {
 // Record one rendered row so the delegated handlers can resolve it.
 export function registerRow(row, station, index) {
     rowEntries.set(row, { station, index });
+}
+
+// Rows carry the index they had when they were rendered. Anything that changes
+// the order or removes a row without re-rendering has to refresh them, or the
+// next click reports a stale position and prev/next jumps elsewhere.
+function reindexRows(container) {
+    [...container.querySelectorAll('.station-item, .recent-item')].forEach((row, i) => {
+        const entry = rowEntries.get(row);
+        if (entry) entry.index = i;
+    });
 }
 
 function resolveRow(e) {
@@ -122,6 +134,16 @@ export function renderStations(stations, container = dom.stationsList, append = 
             } else if (action === 'blacklist') {
                 addToBlacklist(station);
                 row.remove();
+                // Drop it from the playback list too. Leaving it there let
+                // prev/next land on a station the user had just hidden, and
+                // desynced the row count from the array that the next appended
+                // page derives its start index from.
+                const i = state.currentStationsList.indexOf(station);
+                if (i !== -1) {
+                    state.currentStationsList.splice(i, 1);
+                    if (state.currentStationIndex > i) state.currentStationIndex--;
+                }
+                reindexRows(container);
             }
         }
     });
@@ -194,12 +216,19 @@ export function renderStations(stations, container = dom.stationsList, append = 
 // Enable drag-and-drop reordering for a list of .station-item elements inside
 // `container`. On drop, `list` is reordered to match the DOM and `persist` is
 // called to save the new ordering. Container-level listeners are bound once.
-export function setupDragReorder(container, list, persist) {
+export function setupDragReorder(container, getList, persist) {
     // `draggable` is an attribute, so it has to be set per row; the handlers
     // themselves are delegated like the rest.
     container.querySelectorAll('.station-item').forEach((item) => {
         item.draggable = true;
     });
+
+    // The handlers are bound once, so they must not close over the array
+    // itself: removeCustomStation() replaces state.customStations wholesale, and
+    // a captured reference would then sort a detached array while persist() read
+    // the live one — the new order was written, then silently lost on the next
+    // render. Take a getter instead and resolve it at drop time.
+    dragListGetters.set(container, getList);
 
     if (container.dataset.dragBound === '1') return;
     container.dataset.dragBound = '1';
@@ -227,12 +256,17 @@ export function setupDragReorder(container, list, persist) {
     });
 
     container.addEventListener('drop', (e) => {
-        if (!container.querySelector('.station-item')) return;
+        const rows = [...container.querySelectorAll('.station-item')];
+        if (rows.length === 0) return;
         e.preventDefault();
-        const order = [...container.querySelectorAll('.station-item')]
-            .map((el) => el.dataset.stationuuid);
-        const pos = new Map(order.map((id, i) => [id, i]));
+
+        const list = dragListGetters.get(container)();
+        const pos = new Map(rows.map((el, i) => [el.dataset.stationuuid, i]));
         list.sort((a, b) => (pos.get(a.stationuuid) ?? 0) - (pos.get(b.stationuuid) ?? 0));
+
+        // Nothing re-renders after a drop, so refresh the row indices in place.
+        reindexRows(container);
+
         persist();
     });
 }

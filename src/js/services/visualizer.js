@@ -240,6 +240,13 @@ export function startVisualization() {
     dom.visualizerCanvas.width = dom.visualizerCanvas.offsetWidth;
     dom.visualizerCanvas.height = dom.visualizerCanvas.offsetHeight;
 
+    // Cancel a chain that is already running. drawVisualization reschedules
+    // itself and overwrites state.animationId, so starting twice — and every
+    // successful reconnect calls this — orphaned the previous chain: it kept
+    // drawing to the same canvas and stopVisualization could no longer reach
+    // it, so the loops accumulated for the life of the process.
+    if (state.animationId) cancelAnimationFrame(state.animationId);
+
     drawVisualization();
 }
 

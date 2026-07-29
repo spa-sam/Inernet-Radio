@@ -17,7 +17,7 @@ const { applySavedOrder } = await import('../src/js/core/db.js');
 const { EQ_BANDS, EQ_PRESETS } = await import('../src/js/core/constants.js');
 const {
     formatTimer, sanitizeFilename, recordingExtension, getFaviconFromUrl, adjustBrightness,
-    newCustomStationId
+    newCustomStationId, generatePlaceholderLogo
 } = await import('../src/js/core/util.js');
 
 // --- playlist parsing -------------------------------------------------------
@@ -70,6 +70,21 @@ test('newCustomStationId stays unique within a single millisecond', () => {
     for (let i = 0; i < 500; i++) ids.add(newCustomStationId());
     assert.equal(ids.size, 500);
     assert.match([...ids][0], /^custom_\d+_[a-z0-9]+$/);
+});
+
+// Station names are community-submitted, so the initial can be markup. Raw, it
+// makes the SVG invalid XML and the fallback logo renders as a broken image.
+test('generatePlaceholderLogo escapes an initial that is XML markup', () => {
+    const svg = decodeURIComponent(
+        generatePlaceholderLogo('<script>').replace('data:image/svg+xml,', '')
+    );
+    assert.match(svg, /&lt;<\/text>/);
+    assert.doesNotMatch(svg, /><\/text>/);
+    // A normal name is untouched.
+    const plain = decodeURIComponent(
+        generatePlaceholderLogo('Jazz FM').replace('data:image/svg+xml,', '')
+    );
+    assert.match(plain, /J<\/text>/);
 });
 
 test('parsePLS pairs FileN with TitleN', () => {

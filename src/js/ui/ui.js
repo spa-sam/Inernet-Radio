@@ -44,6 +44,8 @@ const FOCUSABLE_SELECTOR =
 
 // The element focus returns to when the dialog closes.
 let modalReturnFocus = null;
+// Fallback descriptor used when that element does not survive a re-render.
+let modalReturnOrigin = null;
 
 function visibleFocusables(modal) {
     return [...modal.querySelectorAll(FOCUSABLE_SELECTOR)]
@@ -77,6 +79,7 @@ function onModalKeydown(e) {
 export function openModal(modal) {
     if (!modal) return;
     modalReturnFocus = document.activeElement;
+    modalReturnOrigin = describeOrigin(modalReturnFocus);
     modal.removeAttribute('inert');
     modal.classList.remove('hidden');
     // Nothing behind the dialog should be reachable by Tab or announced while
@@ -87,6 +90,22 @@ export function openModal(modal) {
     if (items.length) items[0].focus();
 }
 
+// Saving from the dialog re-renders the list that opened it, so the remembered
+// element is detached by the time we close. Describe it well enough to find its
+// replacement: the action it performed, on the row for the same station.
+function describeOrigin(el) {
+    const row = el && el.closest && el.closest('[data-stationuuid]');
+    const action = el && el.dataset ? el.dataset.action : null;
+    return row && action ? { uuid: row.dataset.stationuuid, action } : null;
+}
+
+function reacquireOrigin(origin) {
+    if (!origin) return null;
+    return document.querySelector(
+        `[data-stationuuid="${CSS.escape(origin.uuid)}"] [data-action="${CSS.escape(origin.action)}"]`
+    );
+}
+
 export function closeModal(modal) {
     if (!modal) return;
     modal.removeEventListener('keydown', onModalKeydown);
@@ -94,10 +113,12 @@ export function closeModal(modal) {
     if (dom.appContainer) dom.appContainer.removeAttribute('inert');
     // Restore focus before making the dialog inert, otherwise the browser drops
     // focus to <body> when the element it sits on becomes inert.
-    if (modalReturnFocus && document.contains(modalReturnFocus)) {
-        modalReturnFocus.focus();
-    }
+    const target = modalReturnFocus && document.contains(modalReturnFocus)
+        ? modalReturnFocus
+        : reacquireOrigin(modalReturnOrigin);
+    if (target) target.focus();
     modalReturnFocus = null;
+    modalReturnOrigin = null;
     modal.setAttribute('inert', '');
 }
 

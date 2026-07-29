@@ -35,6 +35,15 @@ export function generatePlaceholderLogo(name) {
     const color = `hsl(${hue}, 60%, 45%)`;
     const lightColor = `hsl(${hue}, 60%, 65%)`;
 
+    // Station names come from a community-edited public catalogue, so the
+    // initial can be `<` or `&`. Dropped in raw it produces invalid XML and the
+    // browser renders nothing — a broken-image icon in place of the fallback
+    // that exists precisely because the real artwork failed.
+    const safeLetter = letter
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
         <defs>
             <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -43,7 +52,7 @@ export function generatePlaceholderLogo(name) {
             </linearGradient>
         </defs>
         <rect width="64" height="64" rx="8" fill="url(#grad)"/>
-        <text x="32" y="44" font-family="'Outfit', sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">${letter}</text>
+        <text x="32" y="44" font-family="'Outfit', sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">${safeLetter}</text>
     </svg>`;
 
     return 'data:image/svg+xml,' + encodeURIComponent(svg);

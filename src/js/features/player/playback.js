@@ -139,6 +139,12 @@ function teardownPcm() {
         state.pcmAbort = null;
     }
     disconnectPcmWorklet();
+    // masterGain is the last node before the destination on BOTH paths, and
+    // playPcmStation drives it down to 0 so playback can fade in. Once the
+    // worklet is gone, setOutputLevel() addresses audioPlayer.volume instead
+    // and would never raise it again — leaving the <audio> path routed through
+    // a muted master. Hand the master back as a transparent stage.
+    if (state.masterGain) state.masterGain.gain.value = 1;
 }
 
 // Read the /pcm response: parse the small header, then forward interleaved
@@ -231,9 +237,6 @@ async function playPcmStation(url, onSuccess, onError, onUnsupported) {
 // Play current station
 export function playStation() {
     if (!state.currentStation) return;
-
-    // Stop any active recording when switching to a new station
-    if (state.isRecording) stopRecording();
 
     state.wantPlayback = true;
     state.lastTrackTitle = '';
@@ -370,6 +373,14 @@ function reportStationClick(station) {
 
 // Select and play a station
 export function selectStation(station, itemElement) {
+    // Recording follows one station, so switching away from it ends the capture.
+    // This lives here rather than in playStation(), which is also the reconnect
+    // entry point — stopping there ended the recording on every passing network
+    // glitch, silently, while playback itself recovered.
+    const switchingAway = state.currentStation
+        && state.currentStation.stationuuid !== station.stationuuid;
+    if (state.isRecording && switchingAway) stopRecording();
+
     // A different station starts with a clean reconnect history.
     state.hadSuccessfulPlayback = false;
     state.reconnectAttempts = 0;
@@ -398,32 +409,38 @@ export function selectStation(station, itemElement) {
     playStation();
 }
 
+// The rendered row for a station, wherever it currently lives — search results,
+// favourites, My Stations or the recently-played strip. Previously prev/next
+// indexed `dom.stationsList` positionally, but `currentStationsList` is swapped
+// to the custom or recently-played array when playback starts from those lists,
+// and those render into different containers: the highlight landed on an
+// unrelated row, and when the index ran past the search list nothing was
+// selected at all even though the index had already moved.
+function rowForStation(station) {
+    if (!station || !station.stationuuid) return null;
+    return document.querySelector(`[data-stationuuid="${CSS.escape(station.stationuuid)}"]`);
+}
+
+function stepStation(delta) {
+    const list = state.currentStationsList;
+    if (list.length === 0) return;
+
+    state.currentStationIndex = (state.currentStationIndex + delta + list.length) % list.length;
+    const station = list[state.currentStationIndex];
+    if (!station) return;
+    // selectStation tolerates a missing row (the station may not be rendered
+    // anywhere right now); playback must not depend on the list being visible.
+    selectStation(station, rowForStation(station));
+}
+
 // Navigate to next station
 export function nextStation() {
-    if (state.currentStationsList.length === 0) return;
-
-    state.currentStationIndex = (state.currentStationIndex + 1) % state.currentStationsList.length;
-    const station = state.currentStationsList[state.currentStationIndex];
-    const items = dom.stationsList.querySelectorAll('.station-item');
-
-    if (items[state.currentStationIndex]) {
-        selectStation(station, items[state.currentStationIndex]);
-    }
+    stepStation(1);
 }
 
 // Navigate to previous station
 export function prevStation() {
-    if (state.currentStationsList.length === 0) return;
-
-    state.currentStationIndex = state.currentStationIndex <= 0
-        ? state.currentStationsList.length - 1
-        : state.currentStationIndex - 1;
-    const station = state.currentStationsList[state.currentStationIndex];
-    const items = dom.stationsList.querySelectorAll('.station-item');
-
-    if (items[state.currentStationIndex]) {
-        selectStation(station, items[state.currentStationIndex]);
-    }
+    stepStation(-1);
 }
 
 // Preview a custom station URL (test playback from the Custom tab)
@@ -440,6 +457,14 @@ export function previewCustomUrl() {
         toast('Enter a stream URL', 'error');
         return;
     }
+
+    // A preview replaces whatever was playing, so any reconnect the previous
+    // stream had queued must be dropped. Otherwise a timer scheduled seconds
+    // earlier fires mid-preview and restarts playback through the full
+    // reconnect path, leaving the button stuck on "Stop" and the status line
+    // counting retries for a stream the user already walked away from.
+    clearTimeout(state.reconnectTimer);
+    state.wantPlayback = false;
 
     const name = dom.customNameInput.value.trim() || 'Preview';
     const favicon = getFaviconFromUrl(url);

@@ -195,7 +195,7 @@ export function renderCustomStations() {
         dom.customStationsList.appendChild(item);
     });
 
-    setupDragReorder(dom.customStationsList, state.customStations, saveCustomOrder);
+    setupDragReorder(dom.customStationsList, () => state.customStations, saveCustomOrder);
 }
 
 // Update current station info in the Custom tab
