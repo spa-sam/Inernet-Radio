@@ -2,7 +2,7 @@
 .custom-section h3,
 .settings-section h3,
 .export-section h3 {
-    font-size: 0.78rem;
+    font-size: var(--fs-sm);
     font-weight: 700;
     color: var(--accent-2);
     margin: 1.25rem 0 0.55rem 0;
@@ -14,7 +14,7 @@
 
 .current-station-empty {
     color: var(--text-dim);
-    font-size: 0.85rem;
+    font-size: var(--fs-lg);
     text-align: center;
     padding: 0.85rem;
     background: rgba(0, 0, 0, 0.2);
@@ -36,7 +36,7 @@
     border-radius: var(--radius-sm);
     object-fit: cover;
     align-self: center;
-    background: #100e16;
+    background: var(--bg-media);
     border: 1px solid var(--line);
 }
 .current-station-form input {
@@ -44,7 +44,7 @@
     border: 1px solid var(--line);
     padding: 0.5rem 0.75rem;
     color: var(--text);
-    font-size: 0.85rem;
+    font-size: var(--fs-lg);
     border-radius: var(--radius-sm);
     outline: none;
 }
@@ -52,9 +52,9 @@
     padding: 0.55rem;
     border: none;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: var(--fs-lg);
     border-radius: var(--radius-sm);
     cursor: pointer;
     transition: var(--transition);
@@ -73,7 +73,7 @@
     border-radius: var(--radius-md);
     background: var(--surface);
     color: var(--text);
-    font-size: 0.9rem;
+    font-size: var(--fs-xl);
     outline: none;
     transition: var(--transition);
 }
@@ -89,7 +89,7 @@
     border: none;
     border-radius: var(--radius-md);
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
@@ -115,7 +115,7 @@
     border-radius: var(--radius-md);
     background: var(--surface);
     color: var(--text-muted);
-    font-size: 0.8rem;
+    font-size: var(--fs-md);
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
@@ -135,7 +135,7 @@
     border-radius: var(--radius-md);
     background: var(--surface-2);
     color: var(--text-muted);
-    font-size: 0.8rem;
+    font-size: var(--fs-md);
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
@@ -153,11 +153,11 @@
     color: var(--accent);
     font-weight: 700;
 }
-#update-action-btn.accent:hover { background: var(--accent); color: #fff; }
-.update-status { font-size: 0.75rem; color: var(--text-muted); }
+#update-action-btn.accent:hover { background: var(--accent); color: var(--on-accent); }
+.update-status { font-size: var(--fs-sm); color: var(--text-muted); }
 .update-status:empty { display: none; }
 .update-status.ok { color: var(--accent); }
-.update-status.error { color: #e74c3c; }
+.update-status.error { color: var(--danger); }
 .update-progress-wrap {
     width: 100%;
     max-width: 360px;

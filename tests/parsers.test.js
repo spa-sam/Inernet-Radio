@@ -16,7 +16,8 @@ const { parseM3U, parsePLS, hasStationNames } = await import('../src/js/core/pla
 const { applySavedOrder } = await import('../src/js/core/db.js');
 const { EQ_BANDS, EQ_PRESETS } = await import('../src/js/core/constants.js');
 const {
-    formatTimer, sanitizeFilename, recordingExtension, getFaviconFromUrl, adjustBrightness
+    formatTimer, sanitizeFilename, recordingExtension, getFaviconFromUrl, adjustBrightness,
+    newCustomStationId
 } = await import('../src/js/core/util.js');
 
 // --- playlist parsing -------------------------------------------------------
@@ -60,6 +61,15 @@ test('hasStationNames accepts a playlist that is mostly named', () => {
         'http://c.fm/3\n'
     );
     assert.equal(hasStationNames(mixed), true);
+});
+
+// Ids used to be the bare timestamp, so stations added in the same millisecond
+// collided — and deleting one of them removed both.
+test('newCustomStationId stays unique within a single millisecond', () => {
+    const ids = new Set();
+    for (let i = 0; i < 500; i++) ids.add(newCustomStationId());
+    assert.equal(ids.size, 500);
+    assert.match([...ids][0], /^custom_\d+_[a-z0-9]+$/);
 });
 
 test('parsePLS pairs FileN with TitleN', () => {

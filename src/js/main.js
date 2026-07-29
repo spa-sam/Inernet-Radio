@@ -322,7 +322,10 @@ if (dom.radioMain) {
     dom.radioMain.addEventListener('click', (e) => {
         if (!dom.radioLayout || !dom.radioLayout.classList.contains('player-collapsed')) return;
         if (e.target.closest('button, input, canvas, a')) return; // let controls work
-        dom.radioLayout.scrollTo({ top: 0, behavior: 'smooth' });
+        // CSS `scroll-behavior` does not govern scrollTo({behavior}), so the
+        // reduced-motion preference has to be read here too.
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        dom.radioLayout.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
     });
 }
 

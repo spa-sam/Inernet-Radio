@@ -4,12 +4,18 @@
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 import { HEART_FILLED_SVG, HEART_OUTLINE_SVG } from '../../core/constants.js';
-import { getFaviconFromUrl } from '../../core/util.js';
+import { getFaviconFromUrl, newCustomStationId } from '../../core/util.js';
 import { applyLogo } from '../../core/favicon.js';
 import { saveCustomStation, deleteCustomStation, updateCustomStation } from '../../core/db.js';
 import { toast, setStationName, openModal, closeModal } from '../../ui/ui.js';
 import { isFavorite, toggleFavorite } from './favorites.js';
-import { setupDragReorder, saveCustomOrder, makeRowActivatable } from './render.js';
+import {
+    setupDragReorder,
+    saveCustomOrder,
+    makeRowActivatable,
+    bindStationList,
+    registerRow
+} from './render.js';
 import { exportCurrentStation } from './io.js';
 import { selectStation, playStation } from '../player.js';
 
@@ -24,7 +30,7 @@ export async function addCustomStation() {
     }
 
     const station = {
-        stationuuid: 'custom_' + Date.now(),
+        stationuuid: newCustomStationId(),
         name: name,
         url: url,
         url_resolved: url,
@@ -106,10 +112,25 @@ export function renderCustomStations() {
 
     dom.customStationsList.innerHTML = '';
 
+    bindStationList(dom.customStationsList, {
+        onSelect: ({ station, index }, row) => {
+            state.currentStationsList = state.customStations;
+            state.currentStationIndex = index;
+            selectStation(station, row);
+        },
+        onAction: (action, { station }, row, button) => {
+            if (action === 'favorite') toggleFavorite(station, button);
+            else if (action === 'edit') openEditModal(station);
+            else if (action === 'delete') removeCustomStation(station.stationuuid);
+        }
+    });
+
     state.customStations.forEach((station, index) => {
         const item = document.createElement('div');
         item.className = 'station-item';
+        item.dataset.stationuuid = station.stationuuid;
         makeRowActivatable(item, `Play ${station.name}`);
+        registerRow(item, station, index);
         if (state.currentStation && state.currentStation.stationuuid === station.stationuuid) {
             item.classList.add('active');
             item.setAttribute('aria-current', 'true');
@@ -145,10 +166,7 @@ export function renderCustomStations() {
             isFavorite(station.stationuuid)
                 ? `Remove ${station.name} from favorites`
                 : `Add ${station.name} to favorites`);
-        favoriteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleFavorite(station, favoriteBtn);
-        });
+        favoriteBtn.dataset.action = 'favorite';
 
         // Edit
         const editBtn = document.createElement('button');
@@ -156,10 +174,7 @@ export function renderCustomStations() {
         editBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>`;
         editBtn.title = 'Edit';
         editBtn.setAttribute('aria-label', `Edit ${station.name}`);
-        editBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openEditModal(station);
-        });
+        editBtn.dataset.action = 'edit';
 
         // Delete
         const deleteBtn = document.createElement('button');
@@ -167,10 +182,7 @@ export function renderCustomStations() {
         deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>`;
         deleteBtn.title = 'Delete';
         deleteBtn.setAttribute('aria-label', `Delete ${station.name}`);
-        deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeCustomStation(station.stationuuid);
-        });
+        deleteBtn.dataset.action = 'delete';
 
         info.appendChild(nameEl);
         info.appendChild(urlEl);
@@ -180,14 +192,6 @@ export function renderCustomStations() {
         actions.appendChild(editBtn);
         actions.appendChild(deleteBtn);
         item.appendChild(actions);
-
-        item.addEventListener('click', () => {
-            state.currentStationsList = state.customStations;
-            state.currentStationIndex = index;
-            selectStation(station, item);
-        });
-
-        item.dataset.stationuuid = station.stationuuid;
         dom.customStationsList.appendChild(item);
     });
 

@@ -10,37 +10,94 @@ import { isFavorite, toggleFavorite } from './favorites.js';
 import { addToBlacklist } from './blacklist.js';
 import { selectStation } from '../player.js';
 
+// --- List event delegation --------------------------------------------------
+// Rows used to carry their own listeners: one for the row plus one per action
+// button, plus a keydown handler — four per row. The search list pages in up to
+// several thousand rows, so that ran into tens of thousands of listeners that
+// all had to be torn down on the next render. Each container now gets exactly
+// two listeners, and a row is mapped back to its station through the uuid
+// already present in its dataset.
+
+const ROW_SELECTOR = '.station-item, .recent-item';
+
+// container -> { onSelect, onAction }
+const listRegistry = new WeakMap();
+// row element -> { station, index }. Keyed by the element rather than by
+// stationuuid so nothing depends on those being unique, and so entries are
+// collected along with the rows they describe.
+const rowEntries = new WeakMap();
+
+// Register what happens when a row in `container` is activated.
+// `onSelect(entry, row)` fires for a click/Enter on the row itself;
+// `onAction(action, entry, row, button)` for a click on a [data-action] button.
+export function bindStationList(container, { onSelect, onAction } = {}) {
+    listRegistry.set(container, { onSelect, onAction });
+
+    if (container.dataset.listBound !== '1') {
+        container.dataset.listBound = '1';
+        container.addEventListener('click', onListClick);
+        container.addEventListener('keydown', onListKeydown);
+    }
+}
+
+// Record one rendered row so the delegated handlers can resolve it.
+export function registerRow(row, station, index) {
+    rowEntries.set(row, { station, index });
+}
+
+function resolveRow(e) {
+    const container = e.currentTarget;
+    const reg = listRegistry.get(container);
+    if (!reg) return null;
+    const row = e.target.closest(ROW_SELECTOR);
+    if (!row || !container.contains(row)) return null;
+    const entry = rowEntries.get(row);
+    return entry ? { reg, row, entry } : null;
+}
+
+function onListClick(e) {
+    const ctx = resolveRow(e);
+    if (!ctx) return;
+    const button = e.target.closest('[data-action]');
+    if (button && ctx.row.contains(button)) {
+        if (ctx.reg.onAction) ctx.reg.onAction(button.dataset.action, ctx.entry, ctx.row, button);
+        return;
+    }
+    if (ctx.reg.onSelect) ctx.reg.onSelect(ctx.entry, ctx.row);
+}
+
+function onListKeydown(e) {
+    const container = e.currentTarget;
+    const row = e.target;
+    // Only keys aimed at the row itself; the action buttons handle their own.
+    if (!row.matches || !row.matches(ROW_SELECTOR)) return;
+
+    if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        // Space is also the global play/stop shortcut — keep it from bubbling
+        // to the document handler.
+        e.stopPropagation();
+        row.click();
+        return;
+    }
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const rows = [...container.children].filter((el) => el.getAttribute('role') === 'button');
+        const next = rows[rows.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1)];
+        if (next) {
+            e.preventDefault();
+            next.focus();
+        }
+    }
+}
+
 // Make a list row behave like a button for keyboard users: focusable, activated
 // by Enter / Space, and navigable with the arrow keys within its container.
-// The row keeps its own action buttons as separate tab stops.
+// Activation itself is handled by the container's delegated listeners.
 export function makeRowActivatable(row, label) {
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
     row.setAttribute('aria-label', label);
-
-    row.addEventListener('keydown', (e) => {
-        // Ignore keys aimed at the nested action buttons.
-        if (e.target !== row) return;
-
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            // Space is also the global play/stop shortcut — keep it from
-            // bubbling to the document handler.
-            e.stopPropagation();
-            row.click();
-            return;
-        }
-
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            const rows = [...row.parentElement.children]
-                .filter((el) => el.getAttribute('role') === 'button');
-            const next = rows[rows.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1)];
-            if (next) {
-                e.preventDefault();
-                next.focus();
-            }
-        }
-    });
 }
 
 export function renderStations(stations, container = dom.stationsList, append = false) {
@@ -54,12 +111,28 @@ export function renderStations(stations, container = dom.stationsList, append = 
         dom.stationsCount.textContent = total ? `${total} stations` : '';
     }
 
+    bindStationList(container, {
+        onSelect: ({ station, index }, row) => {
+            state.currentStationIndex = index;
+            selectStation(station, row);
+        },
+        onAction: (action, { station }, row, button) => {
+            if (action === 'favorite') {
+                toggleFavorite(station, button);
+            } else if (action === 'blacklist') {
+                addToBlacklist(station);
+                row.remove();
+            }
+        }
+    });
+
     stations.forEach((station, i) => {
         const index = startIndex + i;
         const item = document.createElement('div');
         item.className = 'station-item';
         item.dataset.stationuuid = station.stationuuid;
         makeRowActivatable(item, `Play ${station.name}`);
+        registerRow(item, station, index);
         if (state.currentStation && state.currentStation.stationuuid === station.stationuuid) {
             item.classList.add('active');
             item.setAttribute('aria-current', 'true');
@@ -93,26 +166,19 @@ export function renderStations(stations, container = dom.stationsList, append = 
         } else {
             favBtn.innerHTML = HEART_OUTLINE_SVG;
         }
+        favBtn.dataset.action = 'favorite';
         favBtn.setAttribute('aria-label',
             isFavorite(station.stationuuid)
                 ? `Remove ${station.name} from favorites`
                 : `Add ${station.name} to favorites`);
-        favBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleFavorite(station, favBtn);
-        });
 
         // Blacklist button
         const blacklistBtn = document.createElement('button');
         blacklistBtn.className = 'action-btn blacklist-btn';
         blacklistBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>`;
         blacklistBtn.title = 'Hide station';
+        blacklistBtn.dataset.action = 'blacklist';
         blacklistBtn.setAttribute('aria-label', `Hide ${station.name}`);
-        blacklistBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            addToBlacklist(station);
-            item.remove();
-        });
 
         info.appendChild(name);
         info.appendChild(country);
@@ -121,11 +187,6 @@ export function renderStations(stations, container = dom.stationsList, append = 
         actions.appendChild(favBtn);
         actions.appendChild(blacklistBtn);
         item.appendChild(actions);
-
-        item.addEventListener('click', () => {
-            state.currentStationIndex = index;
-            selectStation(station, item);
-        });
         container.appendChild(item);
     });
 }
@@ -134,18 +195,27 @@ export function renderStations(stations, container = dom.stationsList, append = 
 // `container`. On drop, `list` is reordered to match the DOM and `persist` is
 // called to save the new ordering. Container-level listeners are bound once.
 export function setupDragReorder(container, list, persist) {
+    // `draggable` is an attribute, so it has to be set per row; the handlers
+    // themselves are delegated like the rest.
     container.querySelectorAll('.station-item').forEach((item) => {
         item.draggable = true;
-        item.addEventListener('dragstart', (e) => {
-            item.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', item.dataset.stationuuid || '');
-        });
-        item.addEventListener('dragend', () => item.classList.remove('dragging'));
     });
 
     if (container.dataset.dragBound === '1') return;
     container.dataset.dragBound = '1';
+
+    container.addEventListener('dragstart', (e) => {
+        const item = e.target.closest('.station-item');
+        if (!item || !container.contains(item)) return;
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', item.dataset.stationuuid || '');
+    });
+
+    container.addEventListener('dragend', (e) => {
+        const item = e.target.closest('.station-item');
+        if (item) item.classList.remove('dragging');
+    });
 
     container.addEventListener('dragover', (e) => {
         const dragging = container.querySelector('.dragging');

@@ -49,6 +49,14 @@ export function generatePlaceholderLogo(name) {
     return 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 
+// Id for a user-created station. The timestamp alone is not enough: two
+// stations added in the same millisecond (importing a file, or just clicking
+// Add twice quickly) would share an id, and the favourites/custom lists key
+// rows, reordering and deletion off it — deleting one would take both.
+export function newCustomStationId() {
+    return 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+}
+
 // Strip characters illegal in filenames and cap the length
 export function sanitizeFilename(name) {
     return (name || 'recording').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);

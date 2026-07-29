@@ -52,17 +52,60 @@
     --live: #3ad07a;
     --live-glow: rgba(58, 208, 122, 0.4);
     --warn: #f1c40f;
+    --danger: #e74c3c;                      /* record button, error text */
+    --danger-soft: rgba(231, 76, 60, 0.15);
+    --insecure: #ffb020;                    /* unverified-TLS badge */
+
+    /* Source connectivity dots (Settings). A slightly cooler green than
+       --live, which reads as "on air" rather than "reachable". */
+    --source-online: #36c46a;
+    --source-online-glow: rgba(54, 196, 106, 0.6);
+    --source-offline: #e0533d;
+    --source-offline-glow: rgba(224, 83, 61, 0.5);
+    --source-checking: #e0a500;
+
+    /* Brand colour of an external service, used on its own action. */
+    --youtube: #ff3d3d;
 
     /* Typography */
     --text: #f3f1f5;
     --text-muted: #9a96a6;
     --text-dim: #615d6e;
+    --on-accent: #fff;                      /* text/icons over accent fills */
+    --bg-media: #100e16;                    /* placeholder behind station art */
+
+    /* Type scale. The UI had grown 23 distinct sizes, most of them within half a
+       pixel of a neighbour (0.74 / 0.75 / 0.76 / 0.78 all appeared). These eight
+       steps absorb them: no step moves a size by more than 0.03rem (~0.5px),
+       except the single 0.95rem that folds into --fs-2xl. The five display sizes
+       (1.05rem and up) are used once each and stay literal at their call site. */
+    --fs-3xs: 0.6rem;
+    --fs-2xs: 0.66rem;
+    --fs-xs: 0.72rem;
+    --fs-sm: 0.78rem;
+    --fs-md: 0.82rem;
+    --fs-lg: 0.85rem;
+    --fs-xl: 0.9rem;
+    --fs-2xl: 1rem;
 
     /* Layout */
     --radius-lg: 18px;
     --radius-md: 12px;
     --radius-sm: 8px;
-    --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Transitions. Deliberately NOT `all`: that also animates `visibility` and
+       layout properties, which is how a dialog once stayed unfocusable for half
+       its fade — focus() ran while the element was still visibility:hidden.
+       Add properties to this list rather than reaching for `all` again. */
+    --transition-duration: 0.25s;
+    --transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --transition:
+        color var(--transition-duration) var(--transition-ease),
+        background-color var(--transition-duration) var(--transition-ease),
+        border-color var(--transition-duration) var(--transition-ease),
+        box-shadow var(--transition-duration) var(--transition-ease),
+        opacity var(--transition-duration) var(--transition-ease),
+        transform var(--transition-duration) var(--transition-ease);
 }
 
 * {

@@ -2,7 +2,7 @@
 // stations from JSON, M3U/M3U8, PLS or OPML files.
 
 import { state } from '../../core/state.js';
-import { hasTauriApi, getFaviconFromUrl } from '../../core/util.js';
+import { hasTauriApi, getFaviconFromUrl, newCustomStationId } from '../../core/util.js';
 import { saveCustomBatch, saveFavoritesBatch } from '../../core/db.js';
 import { parseM3U, parsePLS } from '../../core/playlist.js';
 import { toast } from '../../ui/ui.js';
@@ -79,7 +79,7 @@ async function importPlaylistStations(entries) {
         if (state.customStations.some(s => s.url === entry.url)) continue;
 
         const station = {
-            stationuuid: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            stationuuid: newCustomStationId(),
             name: entry.name || 'Imported station',
             url: entry.url,
             url_resolved: entry.url,

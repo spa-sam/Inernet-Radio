@@ -5,7 +5,7 @@ import { dom } from '../../core/dom.js';
 import { saveRecentlyPlayed } from '../../core/db.js';
 import { applyLogo } from '../../core/favicon.js';
 import { selectStation } from '../player.js';
-import { makeRowActivatable } from './render.js';
+import { makeRowActivatable, bindStationList, registerRow } from './render.js';
 
 export async function addToRecentlyPlayed(station) {
     if (!station || !station.stationuuid || station.stationuuid.startsWith('preview_')) return;
@@ -29,10 +29,21 @@ export function renderRecentlyPlayed() {
     dom.recentlyPlayedSection.classList.remove('hidden');
     dom.recentlyPlayedList.innerHTML = '';
 
-    state.recentlyPlayed.forEach(station => {
+    bindStationList(dom.recentlyPlayedList, {
+        onSelect: ({ station, index }, row) => {
+            // Swap list context to recentlyPlayed
+            state.currentStationsList = state.recentlyPlayed;
+            state.currentStationIndex = index;
+            selectStation(station, row);
+        }
+    });
+
+    state.recentlyPlayed.forEach((station, index) => {
         const item = document.createElement('div');
         item.className = 'recent-item';
+        item.dataset.stationuuid = station.stationuuid;
         makeRowActivatable(item, `Play ${station.name}`);
+        registerRow(item, station, index);
         if (state.currentStation && state.currentStation.stationuuid === station.stationuuid) {
             item.classList.add('active');
             item.setAttribute('aria-current', 'true');
@@ -47,14 +58,6 @@ export function renderRecentlyPlayed() {
 
         item.appendChild(logo);
         item.appendChild(nameSpan);
-
-        item.addEventListener('click', () => {
-            // Swap list context to recentlyPlayed
-            state.currentStationsList = state.recentlyPlayed;
-            state.currentStationIndex = state.recentlyPlayed.findIndex(s => s.stationuuid === station.stationuuid);
-            selectStation(station, item);
-        });
-
         dom.recentlyPlayedList.appendChild(item);
     });
 }

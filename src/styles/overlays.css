@@ -23,7 +23,7 @@
     border-left: 3px solid var(--accent);
     border-radius: var(--radius-md);
     padding: 12px 18px;
-    font-size: 0.9rem;
+    font-size: var(--fs-xl);
     font-weight: 500;
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
     max-width: 420px;
@@ -61,7 +61,7 @@
     color: var(--text-muted);
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
-    font-size: 0.8rem;
+    font-size: var(--fs-md);
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
@@ -91,7 +91,7 @@
 }
 .track-history-info { flex: 1; min-width: 0; }
 .track-history-title {
-    font-size: 0.9rem;
+    font-size: var(--fs-xl);
     font-weight: 600;
     color: var(--text);
     white-space: nowrap;
@@ -99,7 +99,7 @@
     text-overflow: ellipsis;
 }
 .track-history-meta {
-    font-size: 0.75rem;
+    font-size: var(--fs-sm);
     color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;

@@ -53,6 +53,13 @@ export function resolveLogoSrc(station) {
 // Apply a station logo to an <img>: use the favicon when usable and fall back
 // to the placeholder (recording the failure) on a load error.
 export function applyLogo(imgEl, station) {
+    // Station lists page in thousands of rows. Deferring the fetch to the point
+    // the row scrolls into view, and the decode off the main thread, keeps a
+    // long list from stalling on artwork the user never scrolls to. Images
+    // already in view are unaffected — the browser loads those immediately.
+    imgEl.loading = 'lazy';
+    imgEl.decoding = 'async';
+
     const placeholder = generatePlaceholderLogo(station ? station.name : '');
     if (station && isFaviconUsable(station.favicon)) {
         const url = station.favicon;

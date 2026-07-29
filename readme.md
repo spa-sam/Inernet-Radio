@@ -111,7 +111,18 @@ slows down startup. Deleting those rows only costs a re-fetch.
   (`core/`, `services/`, `features/`, `ui/`) with CSS partials in `src/styles/`.
   `styles/a11y.css` is imported last on purpose: it restates the focus rules of
   the component partials in their `:focus-visible` form, so keyboard users get a
-  ring without changing how the app looks under the mouse.
+  ring without changing how the app looks under the mouse, and it carries the
+  `prefers-reduced-motion` block.
+- **Design tokens** live in `styles/tokens.css`: surfaces, accent, status and
+  service colours, a type scale (`--fs-*`), and `--transition`. That transition
+  token lists the properties it animates instead of using `all` — `all` also
+  animates `visibility`, which once left a dialog unfocusable for half its fade.
+  Extend the list rather than reaching for `all`.
+- **Station lists use event delegation.** Each list container carries one click
+  and one keydown listener; rows are mapped back to their station through a
+  `WeakMap` keyed by the row element. Action buttons declare themselves with
+  `data-action`. A paged-in search result of several thousand rows would
+  otherwise carry four listeners per row.
 
 The local proxy validates TLS certificates first and only falls back to an
 unverified handshake when a station's certificate is expired/mismatched (logged

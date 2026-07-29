@@ -43,6 +43,31 @@
     outline-offset: -2px;
 }
 
+/* Reduced motion ---------------------------------------------------------- */
+/* Honour the OS "reduce motion" setting: the spectrum canvas aside, everything
+   that moves here is decorative (pulsing dots, the scrolling title, toast and
+   dialog entrances). Motion is collapsed rather than removed so state changes
+   still land, they just land instantly. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    /* The marquee is the exception: it is an `alternate` animation, so
+       collapsing its duration would leave the title parked at its end position
+       — scrolled fully out of view. Drop it entirely and let the text clip. */
+    #station-name.marquee,
+    .now-playing-track.marquee {
+        animation: none !important;
+        transform: none !important;
+    }
+}
+
 /* Visually hidden but announced by screen readers. */
 .sr-only {
     position: absolute;

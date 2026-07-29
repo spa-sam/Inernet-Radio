@@ -3,7 +3,7 @@
 
 /* Short explanatory line under a settings heading */
 .settings-hint {
-    font-size: 0.76rem;
+    font-size: var(--fs-sm);
     color: var(--text-dim);
     margin: -0.1rem 0 0.1rem;
 }
@@ -29,10 +29,10 @@
     background: var(--text-dim);
 }
 .source-dot.off { background: var(--line); }
-.source-dot.checking { background: var(--warning, #e0a500); animation: source-dot-pulse 1s ease-in-out infinite; }
-.source-dot.online { background: #36c46a; box-shadow: 0 0 6px rgba(54, 196, 106, 0.6); }
-.source-dot.offline { background: #e0533d; box-shadow: 0 0 6px rgba(224, 83, 61, 0.5); }
-.source-dot.local { background: #36c46a; }
+.source-dot.checking { background: var(--source-checking); animation: source-dot-pulse 1s ease-in-out infinite; }
+.source-dot.online { background: var(--source-online); box-shadow: 0 0 6px var(--source-online-glow); }
+.source-dot.offline { background: var(--source-offline); box-shadow: 0 0 6px var(--source-offline-glow); }
+.source-dot.local { background: var(--source-online); }
 @keyframes source-dot-pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
 .setting-item {
     background: var(--surface);
@@ -45,7 +45,7 @@
 }
 .setting-item:hover { background: var(--surface-2); }
 .flex-between { justify-content: space-between; }
-.setting-item label { font-size: 0.88rem; color: var(--text-muted); }
+.setting-item label { font-size: var(--fs-lg); color: var(--text-muted); }
 
 .checkbox-container {
     display: flex;
@@ -53,7 +53,7 @@
     position: relative;
     padding-left: 28px;
     cursor: pointer;
-    font-size: 0.88rem;
+    font-size: var(--fs-lg);
     color: var(--text-muted);
     user-select: none;
 }
@@ -85,7 +85,7 @@
     top: 2px;
     width: 5px;
     height: 9px;
-    border: solid #fff;
+    border: solid var(--on-accent);
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
 }
@@ -97,7 +97,7 @@
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-sm);
     color: var(--text);
-    font-size: 0.85rem;
+    font-size: var(--fs-lg);
     outline: none;
     cursor: pointer;
 }
@@ -158,13 +158,13 @@
     height: 90px;
 }
 .eq-band-label {
-    font-size: 0.62rem;
+    font-size: var(--fs-3xs);
     color: var(--text-muted);
 }
 
 .about-text {
     color: var(--text-muted);
-    font-size: 0.82rem;
+    font-size: var(--fs-md);
     line-height: 1.55;
     padding: 0.5rem 0.25rem;
 }
