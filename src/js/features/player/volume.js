@@ -34,6 +34,8 @@ export function setVolume(volume, persist = true) {
     dom.volumeSlider.style.setProperty('--vol', volume + '%');
     dom.volumeValueLabel.textContent = volume + '%';
     dom.volumeBar.classList.toggle('muted', volume === 0);
+    dom.volumeMuteBtn.setAttribute('aria-pressed', String(volume === 0));
+    dom.volumeMuteBtn.setAttribute('aria-label', volume === 0 ? 'Unmute' : 'Mute');
 
     if (persist && state.settings.volume !== volume) {
         state.settings.volume = volume;

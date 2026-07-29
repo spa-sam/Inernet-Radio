@@ -83,6 +83,7 @@ import {
     openTrackOnYouTube,
     applyRadioMainWidth,
     setupRadioSplitter,
+    closeModal,
     toast
 } from './ui/ui.js';
 
@@ -272,6 +273,7 @@ dom.filtersToggleBtn.addEventListener('click', () => {
     const willShow = dom.filtersPanel.classList.contains('hidden');
     dom.filtersPanel.classList.toggle('hidden', !willShow);
     dom.filtersToggleBtn.classList.toggle('active', willShow);
+    dom.filtersToggleBtn.setAttribute('aria-expanded', String(willShow));
 });
 
 // Re-run search when a filter changes (keeps results in sync with the panel)
@@ -350,29 +352,56 @@ dom.audioPlayer.addEventListener('playing', () => {
     setConnectionState('playing');
 });
 
-// Tab switching
-document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-        const tabId = tab.dataset.tab;
+// Tab switching. The tablist follows the ARIA pattern: exactly one tab is a tab
+// stop (roving tabindex) and the arrow keys move between them.
+const tabButtons = [...document.querySelectorAll('.tab')];
 
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
+function activateTab(tab, focusIt = false) {
+    const tabId = tab.dataset.tab;
 
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.remove('active');
-        });
-        document.getElementById('tab-' + tabId).classList.add('active');
+    tabButtons.forEach(t => {
+        const on = t === tab;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+    });
 
-        // Refresh source connectivity dots when the Settings tab is opened
-        if (tabId === 'settings') refreshEnabledConnectivity();
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    document.getElementById('tab-' + tabId).classList.add('active');
+
+    if (focusIt) tab.focus();
+
+    // Refresh source connectivity dots when the Settings tab is opened
+    if (tabId === 'settings') refreshEnabledConnectivity();
+}
+
+tabButtons.forEach(tab => {
+    tab.addEventListener('click', () => activateTab(tab));
+
+    tab.addEventListener('keydown', (e) => {
+        const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        if (step) {
+            e.preventDefault();
+            const i = tabButtons.indexOf(tab);
+            // Wrap around, as the ARIA tabs pattern expects.
+            activateTab(tabButtons[(i + step + tabButtons.length) % tabButtons.length], true);
+        } else if (e.key === 'Home' || e.key === 'End') {
+            e.preventDefault();
+            activateTab(e.key === 'Home' ? tabButtons[0] : tabButtons[tabButtons.length - 1], true);
+        }
     });
 });
 
 // Source switch — two modes: unified Search (all enabled sources at once) and
 // Favorites. The search controls + genre chips are shown only in Search mode.
 function setSource(source) {
-    document.querySelectorAll('.source-btn').forEach(b =>
-        b.classList.toggle('active', b.dataset.source === source));
+    document.querySelectorAll('.source-btn').forEach(b => {
+        const on = b.dataset.source === source;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', String(on));
+    });
     if (dom.ctxSearch) dom.ctxSearch.classList.toggle('hidden', source !== 'search');
 
     if (source === 'favorites') {
@@ -416,6 +445,7 @@ if (dom.presetEditBtn) {
     dom.presetEditBtn.addEventListener('click', () => {
         const editing = dom.presetGenres.classList.toggle('editing');
         dom.presetEditBtn.classList.toggle('active', editing);
+        dom.presetEditBtn.setAttribute('aria-pressed', String(editing));
         if (dom.presetEditBar) dom.presetEditBar.classList.toggle('hidden', !editing);
         // Re-render so chips pick up the draggable attribute for the new mode
         renderGenrePresets();
@@ -620,7 +650,7 @@ if (hasTauriApi && window.__TAURI__.event && dom.updateActionBtn) {
 }
 
 // Modal Save & Close
-dom.closeModalBtn.addEventListener('click', () => dom.editModal.classList.add('hidden'));
+dom.closeModalBtn.addEventListener('click', () => closeModal(dom.editModal));
 dom.saveEditBtn.addEventListener('click', saveEditedStation);
 
 // Export/Import
@@ -677,9 +707,14 @@ dom.visualizerSensitivityInput.addEventListener('input', () => {
     saveSetting('visualizerSensitivity', state.settings.visualizerSensitivity);
 });
 
-// Keyboard shortcuts: Space toggles play/stop (only when not typing in a field)
+// Keyboard shortcuts: Space toggles play/stop. Skipped while a field is being
+// typed in, and while any control that already answers to Space has focus —
+// otherwise tabbing to a button and pressing Space both activated it and
+// toggled playback.
 document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    const el = e.target;
+    if (el.isContentEditable) return;
+    if (el.closest && el.closest('input, select, textarea, button, a, [role="button"]')) return;
 
     if (e.key === ' ') {
         e.preventDefault();

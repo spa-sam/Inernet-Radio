@@ -348,6 +348,8 @@ export function updatePlayButton() {
         dom.playIcon.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
         dom.playBtn.classList.remove('playing');
     }
+    // The icon is the only visual cue — mirror it in the accessible name.
+    dom.playBtn.setAttribute('aria-label', state.isPlaying ? 'Stop' : 'Play');
     // Drive the LIVE badges and the "ON AIR" indicator
     dom.appContainer.classList.toggle('playing', state.isPlaying);
     updateBrandStatus();

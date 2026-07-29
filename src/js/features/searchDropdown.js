@@ -39,13 +39,16 @@ function item(label, onClick, sub) {
 }
 
 export function closeDropdown() {
-    if (dom.searchDropdown) dom.searchDropdown.classList.add('hidden');
+    if (!dom.searchDropdown) return;
+    dom.searchDropdown.classList.add('hidden');
+    if (dom.searchDropdownBtn) dom.searchDropdownBtn.setAttribute('aria-expanded', 'false');
 }
 
 export function openDropdown() {
     if (!dom.searchDropdown) return;
     renderDropdown();
     dom.searchDropdown.classList.remove('hidden');
+    if (dom.searchDropdownBtn) dom.searchDropdownBtn.setAttribute('aria-expanded', 'true');
 }
 
 function toggleDropdown() {

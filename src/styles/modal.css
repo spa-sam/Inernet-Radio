@@ -11,6 +11,11 @@
     padding: 1rem;
     transition: var(--transition);
 }
+/* A closed dialog is only transparent, so its inputs stay in the tab order.
+   The `inert` attribute (set by openModal / closeModal) is what removes them —
+   deliberately not `visibility: hidden`, which every descendant carrying
+   `transition: var(--transition)` would animate, leaving them unfocusable for
+   the first half of the fade. */
 .modal.hidden { opacity: 0; pointer-events: none; }
 .modal-content {
     background: var(--surface);
@@ -36,6 +41,10 @@
 .modal-header h3 { font-size: 1.05rem; font-weight: 700; }
 .close-modal-btn {
     font-size: 1.5rem;
+    line-height: 1;
+    padding: 0 0.25rem;
+    border: none;
+    background: transparent;
     color: var(--text-muted);
     cursor: pointer;
     transition: var(--transition);

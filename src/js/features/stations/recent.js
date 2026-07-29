@@ -5,6 +5,7 @@ import { dom } from '../../core/dom.js';
 import { saveRecentlyPlayed } from '../../core/db.js';
 import { applyLogo } from '../../core/favicon.js';
 import { selectStation } from '../player.js';
+import { makeRowActivatable } from './render.js';
 
 export async function addToRecentlyPlayed(station) {
     if (!station || !station.stationuuid || station.stationuuid.startsWith('preview_')) return;
@@ -31,8 +32,10 @@ export function renderRecentlyPlayed() {
     state.recentlyPlayed.forEach(station => {
         const item = document.createElement('div');
         item.className = 'recent-item';
+        makeRowActivatable(item, `Play ${station.name}`);
         if (state.currentStation && state.currentStation.stationuuid === station.stationuuid) {
             item.classList.add('active');
+            item.setAttribute('aria-current', 'true');
         }
 
         const logo = document.createElement('img');

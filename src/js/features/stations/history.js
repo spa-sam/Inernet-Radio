@@ -49,7 +49,9 @@ export function renderTrackHistory() {
 
         const meta = document.createElement('div');
         meta.className = 'track-history-meta';
-        const time = new Date(entry.timestamp).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+        // Follow the OS locale — the UI itself is English, so a hard-coded
+        // locale here was a leftover.
+        const time = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         meta.textContent = [entry.stationName, time].filter(Boolean).join('  ·  ');
 
         info.append(titleEl, meta);
@@ -57,6 +59,7 @@ export function renderTrackHistory() {
         const ytBtn = document.createElement('button');
         ytBtn.className = 'action-btn track-history-yt';
         ytBtn.title = 'Find on YouTube';
+        ytBtn.setAttribute('aria-label', `Find "${entry.title}" on YouTube`);
         ytBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31.3 31.3 0 0 0 0 12a31.3 31.3 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31.3 31.3 0 0 0 24 12a31.3 31.3 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6z" fill="currentColor"/></svg>`;
         ytBtn.addEventListener('click', () => openYouTubeSearch(entry.title));
 

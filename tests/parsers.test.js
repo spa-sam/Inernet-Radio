@@ -12,7 +12,7 @@ if (!('window' in globalThis)) globalThis.window = {};
 // Node ≥21 already exposes a read-only `navigator`; only stub it when missing.
 if (!('navigator' in globalThis)) globalThis.navigator = { userAgent: 'node' };
 
-const { parseM3U, parsePLS } = await import('../src/js/core/playlist.js');
+const { parseM3U, parsePLS, hasStationNames } = await import('../src/js/core/playlist.js');
 const { applySavedOrder } = await import('../src/js/core/db.js');
 const { EQ_BANDS, EQ_PRESETS } = await import('../src/js/core/constants.js');
 const {
@@ -43,6 +43,23 @@ test('parseM3U falls back to the URL when there is no EXTINF', () => {
 
 test('parseM3U ignores comments and blank lines', () => {
     assert.deepEqual(parseM3U('#EXTM3U\n\n#SOMETHING\n'), []);
+});
+
+// Guards the M3U search index against the repo's "lite" aggregates, which are
+// bare URL lists — every station would end up named after its own stream URL.
+test('hasStationNames rejects a playlist whose entries are named after their URL', () => {
+    const bare = parseM3U('http://a.fm/1\nhttp://b.fm/2\nhttp://c.fm/3\n');
+    assert.equal(hasStationNames(bare), false);
+    assert.equal(hasStationNames([]), false);
+});
+
+test('hasStationNames accepts a playlist that is mostly named', () => {
+    const mixed = parseM3U(
+        '#EXTINF:-1,Alpha\nhttp://a.fm/1\n' +
+        '#EXTINF:-1,Beta\nhttp://b.fm/2\n' +
+        'http://c.fm/3\n'
+    );
+    assert.equal(hasStationNames(mixed), true);
 });
 
 test('parsePLS pairs FileN with TitleN', () => {

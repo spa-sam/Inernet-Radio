@@ -21,7 +21,8 @@ equalizer — in a dark “studio” interface.
 - **Unified search** across all enabled sources at once — Radio Browser,
   SomaFM, M3U Radio, and your own custom stations — with de‑duplicated results.
 - **Source management** in Settings: enable/disable each source with a live
-  connectivity indicator (M3U Radio is off by default — it builds a large index).
+  connectivity indicator (M3U Radio is off by default — it downloads a
+  catalogue index on first use).
 - **Combined search dropdown**: live suggestions, your genre presets, and
   curated collections (SomaFM channels, M3U genres).
 - **Filters**: country, tag/genre, minimum bitrate, codec, language, sort order.
@@ -41,7 +42,11 @@ equalizer — in a dark “studio” interface.
   playing gets a long retry budget, so a passing network glitch does not end an
   unattended session; one that never started is given up on quickly.
 - **Live track titles** (ICY metadata) parsed through a built‑in local
-  CORS proxy, so streams that browsers normally block just work.
+  CORS proxy, so streams that browsers normally block just work. Stations whose
+  `StreamTitle` carries a block of `key="value"` attributes (as iHeartRadio
+  encoders send — either `title="…",artist="…",url="…"` or
+  `Artist - text="…" song_spot="…" …`) are reduced to a plain `Artist - Title`,
+  which also keeps the per‑track recording filenames readable.
 - **Stream recording** — one continuous file, or split into one file per track.
 - **10‑band equalizer** with presets and optional volume normalization.
 - **Audio spectrum visualizer** (multiple styles, colour and sensitivity).
@@ -59,7 +64,22 @@ equalizer — in a dark “studio” interface.
 - The chosen layout, player width, presets and source choices are all persisted.
 - **Desktop auto‑updater** (checks and installs new releases from About).
 
-Keyboard: `Space` — play / stop (ignored while typing in a field).
+### Keyboard & accessibility
+
+- `Space` — play / stop. Ignored while typing in a field, and while a control
+  that already answers to `Space` has focus, so tabbing to a button and pressing
+  `Space` activates only that button.
+- The header tabs follow the ARIA tabs pattern: `←` / `→` (and `Home` / `End`)
+  move between Radio, My Stations and Settings.
+- Station rows are reachable with `Tab`, activated with `Enter` / `Space`, and
+  `↑` / `↓` moves between rows in the same list.
+- The Edit-station dialog takes focus when it opens, keeps `Tab` inside itself,
+  closes on `Escape`, and hands focus back to the control that opened it. While
+  it is open the rest of the app is `inert`.
+- Every control has a visible keyboard focus ring (`:focus-visible`, so a mouse
+  click leaves no ring) and an accessible name; toggles expose their state via
+  `aria-pressed` / `aria-selected` / `aria-expanded`, and toasts are announced
+  through a polite live region.
 
 ## Data & sources
 
@@ -67,7 +87,11 @@ Keyboard: `Space` — play / stop (ignored while typing in a field).
   30,000+ stations (with automatic mirror failover).
 - [SomaFM](https://somafm.com/) curated channels.
 - [m3u‑radio‑music‑playlists](https://github.com/junguler/m3u-radio-music-playlists)
-  genre playlists.
+  genre playlists. The unified search indexes the repo's `---everything-full.m3u`
+  aggregate specifically: its sibling "lite" and "repo" aggregates are bare URL
+  lists (or run to tens of megabytes), and a playlist without `#EXTINF` lines
+  leaves every station named after its own stream URL. The index is rejected and
+  the previous one kept if the downloaded playlist turns out to be nameless.
 
 Settings, favorites, custom stations and history are stored locally in
 **SQLite** (with a `localStorage` fallback). Nothing is sent anywhere except the
@@ -85,6 +109,9 @@ slows down startup. Deleting those rows only costs a re-fetch.
   `metadata` (ICY parsing), `recording`, and `updater`.
 - **Vanilla JS** ES modules (no bundler), grouped under `src/js/`
   (`core/`, `services/`, `features/`, `ui/`) with CSS partials in `src/styles/`.
+  `styles/a11y.css` is imported last on purpose: it restates the focus rules of
+  the component partials in their `:focus-visible` form, so keyboard users get a
+  ring without changing how the app looks under the mouse.
 
 The local proxy validates TLS certificates first and only falls back to an
 unverified handshake when a station's certificate is expired/mismatched (logged

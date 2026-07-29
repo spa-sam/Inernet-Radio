@@ -1,0 +1,57 @@
+/* ==========================================================================
+   Accessibility layer — visible keyboard focus + screen-reader helpers.
+
+   Imported last so these rules win ties against the component partials. Those
+   partials set `outline: none` on the resting state of inputs and sliders (so a
+   mouse click leaves no ring); rather than removing those declarations, every
+   selector that carries one is restated here in its :focus-visible form. The
+   ring therefore appears for keyboard users only, and the mouse-driven look is
+   unchanged.
+   ========================================================================== */
+
+:focus-visible {
+    outline: 2px solid var(--accent-2);
+    outline-offset: 2px;
+}
+
+/* Re-state the rules whose specificity beats a bare `:focus-visible`. */
+#search-input:focus-visible,
+.custom-form input:focus-visible,
+.current-station-form input:focus-visible,
+.filter-group input:focus-visible,
+.filter-group select:focus-visible,
+.preset-edit-bar input:focus-visible,
+.custom-select:focus-visible,
+.custom-slider:focus-visible,
+.volume-range:focus-visible {
+    outline: 2px solid var(--accent-2);
+    outline-offset: 2px;
+}
+
+/* The real checkbox is collapsed to 0×0 and visually replaced by .checkmark,
+   so the ring has to be drawn on the substitute. */
+.checkbox-container input:focus-visible ~ .checkmark {
+    outline: 2px solid var(--accent-2);
+    outline-offset: 2px;
+}
+
+/* List rows are activatable containers (role="button"), not native buttons —
+   an inset ring reads better than an outset one against the row border. */
+.station-item:focus-visible,
+.recent-item:focus-visible {
+    outline: 2px solid var(--accent-2);
+    outline-offset: -2px;
+}
+
+/* Visually hidden but announced by screen readers. */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}

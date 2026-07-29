@@ -17,11 +17,14 @@ export async function toggleFavorite(station, btn) {
         state.favorites.push(station);
         btn.classList.add('active');
         btn.innerHTML = HEART_FILLED_SVG;
+        // The icon alone carries the new state — keep the accessible name in sync.
+        btn.setAttribute('aria-label', `Remove ${station.name} from favorites`);
         await saveFavorite(station, state.favorites);
     } else {
         state.favorites.splice(index, 1);
         btn.classList.remove('active');
         btn.innerHTML = HEART_OUTLINE_SVG;
+        btn.setAttribute('aria-label', `Add ${station.name} to favorites`);
         await deleteFavorite(station.stationuuid, state.favorites);
     }
 }

@@ -82,4 +82,6 @@ function updateRecordButton() {
     if (!dom.recordBtn) return;
     dom.recordBtn.classList.toggle('recording', state.isRecording);
     dom.recordBtn.title = state.isRecording ? 'Stop recording' : 'Record stream';
+    dom.recordBtn.setAttribute('aria-label', dom.recordBtn.title);
+    dom.recordBtn.setAttribute('aria-pressed', String(state.isRecording));
 }

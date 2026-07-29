@@ -16,6 +16,10 @@ export function toast(message, type = 'info', duration = 3200) {
     if (!state.toastContainer) {
         state.toastContainer = document.createElement('div');
         state.toastContainer.className = 'toast-container';
+        // Announce toasts to screen readers. Polite, not assertive: these are
+        // status messages and must not interrupt what is being read.
+        state.toastContainer.setAttribute('role', 'status');
+        state.toastContainer.setAttribute('aria-live', 'polite');
         document.body.appendChild(state.toastContainer);
     }
     const el = document.createElement('div');
@@ -27,6 +31,74 @@ export function toast(message, type = 'info', duration = 3200) {
         el.classList.add('toast-out');
         el.addEventListener('animationend', () => el.remove(), { once: true });
     }, duration);
+}
+
+// --- Modal focus management -------------------------------------------------
+// A dialog has to take focus when it opens, keep Tab inside itself while it is
+// open, and hand focus back to whatever opened it on close. Without this the
+// keyboard silently walks out of the dialog into the page behind it.
+
+const FOCUSABLE_SELECTOR =
+    'button:not([disabled]), [href], input:not([type="hidden"]):not([disabled]), ' +
+    'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// The element focus returns to when the dialog closes.
+let modalReturnFocus = null;
+
+function visibleFocusables(modal) {
+    return [...modal.querySelectorAll(FOCUSABLE_SELECTOR)]
+        .filter((el) => el.offsetWidth > 0 || el.offsetHeight > 0);
+}
+
+// Cycle Tab / Shift+Tab within the dialog, and close it on Escape.
+function onModalKeydown(e) {
+    const modal = e.currentTarget;
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        closeModal(modal);
+        return;
+    }
+    if (e.key !== 'Tab') return;
+
+    const items = visibleFocusables(modal);
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+
+    if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+    }
+}
+
+export function openModal(modal) {
+    if (!modal) return;
+    modalReturnFocus = document.activeElement;
+    modal.removeAttribute('inert');
+    modal.classList.remove('hidden');
+    // Nothing behind the dialog should be reachable by Tab or announced while
+    // it is open; `inert` handles both in one attribute.
+    if (dom.appContainer) dom.appContainer.setAttribute('inert', '');
+    modal.addEventListener('keydown', onModalKeydown);
+    const items = visibleFocusables(modal);
+    if (items.length) items[0].focus();
+}
+
+export function closeModal(modal) {
+    if (!modal) return;
+    modal.removeEventListener('keydown', onModalKeydown);
+    modal.classList.add('hidden');
+    if (dom.appContainer) dom.appContainer.removeAttribute('inert');
+    // Restore focus before making the dialog inert, otherwise the browser drops
+    // focus to <body> when the element it sits on becomes inert.
+    if (modalReturnFocus && document.contains(modalReturnFocus)) {
+        modalReturnFocus.focus();
+    }
+    modalReturnFocus = null;
+    modal.setAttribute('inert', '');
 }
 
 // Enable marquee scrolling on an element when its text overflows its parent
@@ -219,6 +291,7 @@ export async function toggleAlwaysOnTop() {
             state.isAlwaysOnTop = !state.isAlwaysOnTop;
             await appWindow.setAlwaysOnTop(state.isAlwaysOnTop);
             dom.alwaysOnTopBtn.classList.toggle('active', state.isAlwaysOnTop);
+            dom.alwaysOnTopBtn.setAttribute('aria-pressed', String(state.isAlwaysOnTop));
         } catch (e) {
             console.error('Failed to toggle always on top:', e);
         }
@@ -235,7 +308,9 @@ export async function applyViewMode(wide, isInit = false) {
     // Sync the header segmented switch and the settings dropdown
     if (dom.viewSwitch) {
         dom.viewSwitch.querySelectorAll('.view-opt').forEach(opt => {
-            opt.classList.toggle('active', opt.dataset.view === (wide ? 'wide' : 'narrow'));
+            const on = opt.dataset.view === (wide ? 'wide' : 'narrow');
+            opt.classList.toggle('active', on);
+            opt.setAttribute('aria-pressed', String(on));
         });
     }
     if (dom.viewModeSelect) dom.viewModeSelect.value = wide ? 'wide' : 'narrow';

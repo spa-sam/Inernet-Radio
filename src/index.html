@@ -16,20 +16,20 @@
                 </div>
                 <div class="brand-text">
                     <span class="brand-name">radio</span>
-                    <span class="brand-status" id="brand-status">v1.0.0 · OFF AIR</span>
+                    <span class="brand-status" id="brand-status" role="status">v1.0.0 · OFF AIR</span>
                 </div>
             </div>
 
-            <nav class="tabs">
-                <button class="tab active" data-tab="radio">
+            <nav class="tabs" role="tablist" aria-label="Sections">
+                <button class="tab active" data-tab="radio" id="tabbtn-radio" role="tab" aria-selected="true" aria-controls="tab-radio">
                     <svg viewBox="0 0 24 24" class="tab-icon"><path d="M20 6H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-8 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm8-6h-2V9h2v2zm-2 4h2v-2h-2v2z" fill="currentColor"/></svg>
                     Radio
                 </button>
-                <button class="tab" data-tab="custom">
+                <button class="tab" data-tab="custom" id="tabbtn-custom" role="tab" aria-selected="false" aria-controls="tab-custom" tabindex="-1">
                     <svg viewBox="0 0 24 24" class="tab-icon"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/></svg>
                     My Stations
                 </button>
-                <button class="tab" data-tab="settings">
+                <button class="tab" data-tab="settings" id="tabbtn-settings" role="tab" aria-selected="false" aria-controls="tab-settings" tabindex="-1">
                     <svg viewBox="0 0 24 24" class="tab-icon"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></svg>
                     Settings
                 </button>
@@ -37,11 +37,11 @@
 
             <div class="header-actions">
                 <!-- View switch: narrow / wide -->
-                <div class="view-switch" id="view-switch">
-                    <button class="view-opt active" data-view="narrow" title="Narrow view">
+                <div class="view-switch" id="view-switch" role="group" aria-label="Interface view">
+                    <button class="view-opt active" data-view="narrow" title="Narrow view" aria-label="Narrow view" aria-pressed="true">
                         <svg viewBox="0 0 24 24"><rect x="8.5" y="4" width="7" height="16" rx="1.6" fill="currentColor"/></svg>
                     </button>
-                    <button class="view-opt" data-view="wide" title="Wide view">
+                    <button class="view-opt" data-view="wide" title="Wide view" aria-label="Wide view" aria-pressed="false">
                         <svg viewBox="0 0 24 24"><rect x="3" y="6" width="8" height="12" rx="1.4" fill="currentColor"/><rect x="13" y="6" width="8" height="12" rx="1.4" fill="currentColor"/></svg>
                     </button>
                 </div>
@@ -49,20 +49,20 @@
         </header>
 
         <!-- Radio tab -->
-        <div class="tab-content active" id="tab-radio">
+        <div class="tab-content active" id="tab-radio" role="tabpanel" aria-labelledby="tabbtn-radio">
             <div class="radio-layout">
                 <!-- Player column -->
                 <div class="radio-main" id="radio-main">
                     <div class="player-section">
                         <!-- Window controls -->
                         <div class="window-controls">
-                            <button id="always-on-top-btn" class="control-circle-btn" title="Pin on top">
+                            <button id="always-on-top-btn" class="control-circle-btn" title="Pin on top" aria-label="Pin on top" aria-pressed="false">
                                 <svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" fill="currentColor"/></svg>
                             </button>
-                            <button id="enter-compact-btn" class="control-circle-btn" title="Compact mode">
+                            <button id="enter-compact-btn" class="control-circle-btn" title="Compact mode" aria-label="Enter compact mode">
                                 <svg viewBox="0 0 24 24"><path d="M19 19H5V5h14v14zM7 7h10v2H7V7z" fill="currentColor"/></svg>
                             </button>
-                            <button id="exit-compact-btn" class="control-circle-btn" title="Exit compact mode">
+                            <button id="exit-compact-btn" class="control-circle-btn" title="Exit compact mode" aria-label="Exit compact mode">
                                 <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" fill="currentColor"/></svg>
                             </button>
                         </div>
@@ -92,12 +92,12 @@
                             <div class="track-card-thumb" id="track-card-thumb"></div>
                             <div class="track-card-body">
                                 <div class="track-card-label">Track</div>
-                                <div id="now-playing-track" class="now-playing-track"></div>
+                                <div id="now-playing-track" class="now-playing-track" role="status" aria-live="polite"></div>
                             </div>
-                            <button class="track-copy-btn" id="track-copy-btn" title="Copy track name">
+                            <button class="track-copy-btn" id="track-copy-btn" title="Copy track name" aria-label="Copy track name">
                                 <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" fill="currentColor"/></svg>
                             </button>
-                            <button class="track-youtube-btn" id="track-youtube-btn" title="Find track on YouTube">
+                            <button class="track-youtube-btn" id="track-youtube-btn" title="Find track on YouTube" aria-label="Find track on YouTube">
                                 <svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31.3 31.3 0 0 0 0 12a31.3 31.3 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31.3 31.3 0 0 0 24 12a31.3 31.3 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6z" fill="currentColor"/></svg>
                             </button>
                         </div>
@@ -124,18 +124,18 @@
                             </div>
 
                             <div class="transport-buttons">
-                                <button id="prev-btn" class="nav-btn" title="Previous">
+                                <button id="prev-btn" class="nav-btn" title="Previous" aria-label="Previous station">
                                     <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="currentColor"/></svg>
                                 </button>
-                                <button id="play-btn" class="play-btn" title="Play/Pause">
+                                <button id="play-btn" class="play-btn" title="Play/Pause" aria-label="Play">
                                     <span class="play-icon">
                                         <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
                                     </span>
                                 </button>
-                                <button id="next-btn" class="nav-btn" title="Next">
+                                <button id="next-btn" class="nav-btn" title="Next" aria-label="Next station">
                                     <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-10 12l8.5-6L6 6z" fill="currentColor"/></svg>
                                 </button>
-                                <button id="record-btn" class="nav-btn record-btn" title="Record stream">
+                                <button id="record-btn" class="nav-btn record-btn" title="Record stream" aria-label="Record stream" aria-pressed="false">
                                     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor"/></svg>
                                 </button>
                             </div>
@@ -156,11 +156,11 @@
 
                         <!-- Horizontal volume control -->
                         <div class="volume-bar">
-                            <button id="volume-mute" class="volume-mute-btn" title="Mute">
+                            <button id="volume-mute" class="volume-mute-btn" title="Mute" aria-label="Mute" aria-pressed="false">
                                 <svg class="vol-icon vol-icon-high" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" fill="currentColor"/></svg>
                                 <svg class="vol-icon vol-icon-muted" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" fill="currentColor"/></svg>
                             </button>
-                            <input type="range" id="volume" class="volume-range" min="0" max="100" value="70">
+                            <input type="range" id="volume" class="volume-range" min="0" max="100" value="70" aria-label="Volume">
                             <span class="volume-value" id="volume-value">70%</span>
                         </div>
                     </div>
@@ -174,25 +174,25 @@
                     <!-- Search section with filters -->
                     <div class="search-section">
                         <!-- Source switch: where the station list comes from -->
-                        <div class="source-switch" id="source-switch">
-                            <button class="source-btn active" data-source="search">Search</button>
-                            <button class="source-btn" data-source="favorites">★ Favorites</button>
+                        <div class="source-switch" id="source-switch" role="group" aria-label="Station list source">
+                            <button class="source-btn active" data-source="search" aria-pressed="true">Search</button>
+                            <button class="source-btn" data-source="favorites" aria-pressed="false">★ Favorites</button>
                         </div>
 
                         <!-- Search context: free-text search, filters and genre chips -->
                         <div class="source-context" id="ctx-search">
                         <div class="search-row">
                             <div class="search-box">
-                                <button id="search-btn" class="search-go" title="Search">
+                                <button id="search-btn" class="search-go" title="Search" aria-label="Search">
                                     <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor"/></svg>
                                 </button>
-                                <input type="text" id="search-input" placeholder="Search radio stations...">
-                                <button id="add-genre-btn" class="add-genre-btn hidden" title="Add as genre preset">+</button>
-                                <button id="search-dropdown-btn" class="search-dropdown-btn" title="Browse genres & collections">▾</button>
+                                <input type="text" id="search-input" placeholder="Search radio stations..." aria-label="Search radio stations">
+                                <button id="add-genre-btn" class="add-genre-btn hidden" title="Add as genre preset" aria-label="Add as genre preset">+</button>
+                                <button id="search-dropdown-btn" class="search-dropdown-btn" title="Browse genres &amp; collections" aria-label="Browse genres and collections" aria-expanded="false" aria-controls="search-dropdown">▾</button>
                                 <!-- Combined dropdown: suggestions + genres + collections -->
                                 <div class="search-dropdown hidden" id="search-dropdown"></div>
                             </div>
-                            <button id="filters-toggle-btn" class="filters-toggle-btn">
+                            <button id="filters-toggle-btn" class="filters-toggle-btn" aria-expanded="false" aria-controls="filters-panel">
                                 <svg viewBox="0 0 24 24" width="14" height="14" class="filter-icon"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" fill="currentColor"/></svg>
                                 Filters
                             </button>
@@ -249,11 +249,11 @@
                         <div class="presets" id="presets">
                             <!-- Editable genre chips are rendered here from settings.genrePresets -->
                             <span class="preset-genres" id="preset-genres"></span>
-                            <button class="preset-edit-btn" id="preset-edit-btn" title="Edit genres">✎</button>
+                            <button class="preset-edit-btn" id="preset-edit-btn" title="Edit genres" aria-label="Edit genre presets" aria-pressed="false">✎</button>
                         </div>
 
                         <div class="preset-edit-bar hidden" id="preset-edit-bar">
-                            <input type="text" id="preset-add-input" placeholder="Add genre (e.g. techno)" maxlength="30">
+                            <input type="text" id="preset-add-input" placeholder="Add genre (e.g. techno)" maxlength="30" aria-label="Add genre preset">
                             <button id="preset-add-btn" class="preset-add-btn">Add</button>
                             <button id="preset-reset-btn" class="preset-reset-btn" title="Restore default genres">Reset</button>
                         </div>
@@ -272,7 +272,7 @@
                             <h4>All Stations</h4>
                             <span class="stations-count" id="stations-count"></span>
                         </div>
-                        <div id="stations-list" class="stations-list">
+                        <div id="stations-list" class="stations-list" role="group" aria-label="Stations">
                             <div class="loading-hint">Find radio stations using the search above</div>
                         </div>
                     </div>
@@ -281,7 +281,7 @@
         </div>
 
         <!-- My Stations tab -->
-        <div class="tab-content" id="tab-custom">
+        <div class="tab-content" id="tab-custom" role="tabpanel" aria-labelledby="tabbtn-custom" tabindex="0">
             <div class="custom-section">
                 <h3>Now Playing</h3>
                 <div id="current-station-info" class="current-station-info">
@@ -290,7 +290,7 @@
 
                 <div class="track-history-head">
                     <h3>Track History</h3>
-                    <button id="clear-history-btn" class="clear-history-btn" title="Clear track history">
+                    <button id="clear-history-btn" class="clear-history-btn" title="Clear track history" aria-label="Clear track history">
                         <svg viewBox="0 0 24 24" width="15" height="15"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>
                         Clear
                     </button>
@@ -327,7 +327,7 @@
         </div>
 
         <!-- Settings tab -->
-        <div class="tab-content" id="tab-settings">
+        <div class="tab-content" id="tab-settings" role="tabpanel" aria-labelledby="tabbtn-settings" tabindex="0">
             <div class="settings-section">
                 <h3>Display</h3>
                 <div class="setting-item flex-between">
@@ -473,11 +473,11 @@
     </div>
 
     <!-- Modal for editing custom stations -->
-    <div id="edit-modal" class="modal hidden">
+    <div id="edit-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title" inert>
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Edit station</h3>
-                <span class="close-modal-btn" id="close-modal-btn">&times;</span>
+                <h3 id="edit-modal-title">Edit station</h3>
+                <button type="button" class="close-modal-btn" id="close-modal-btn" aria-label="Close">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="custom-form">

@@ -168,14 +168,103 @@ where
     })
 }
 
+// Read the value of a `key="value"` attribute, matching `key` only where it
+// actually starts an attribute (start of input, or after a comma or space) so
+// `title` does not also match `subtitle`. Values are read to the next quote.
+fn attr_value<'a>(s: &'a str, key: &str) -> Option<&'a str> {
+    let pat = format!("{}=\"", key);
+    let mut from = 0;
+    while let Some(offset) = s[from..].find(&pat) {
+        let at = from + offset;
+        let starts_attr = at == 0 || matches!(s.as_bytes()[at - 1], b',' | b' ' | b'\t');
+        if starts_attr {
+            let start = at + pat.len();
+            return s[start..].find('"').map(|end| s[start..start + end].trim());
+        }
+        from = at + pat.len();
+    }
+    None
+}
+
+// Byte that may appear inside an attribute key.
+fn is_key_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'-'
+}
+
+// Offset where the trailing `key="value"` attribute blob begins, if any. Found
+// by locating the first `="` and walking back over the key to its first byte,
+// which must itself start at the beginning of the string or after a separator.
+fn attr_blob_start(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut from = 0;
+    while let Some(offset) = s[from..].find("=\"") {
+        let eq = from + offset;
+        let mut key_start = eq;
+        while key_start > 0 && is_key_byte(bytes[key_start - 1]) {
+            key_start -= 1;
+        }
+        let starts_attr = key_start < eq
+            && (key_start == 0 || matches!(bytes[key_start - 1], b',' | b' ' | b'\t'));
+        if starts_attr && s.is_char_boundary(key_start) {
+            return Some(key_start);
+        }
+        from = eq + 2;
+    }
+    None
+}
+
+// Some encoders (iHeartRadio and friends) append a structured payload to
+// StreamTitle instead of sending a plain "Artist - Song" string. Two shapes
+// show up in the wild, and the quotes inside a value are never escaped, so the
+// whole blob used to be displayed verbatim as the track name:
+//
+//   title="BREAK MY HEART",artist="Dua Lipa",url="song_spot="F" MediaBaseId="0" …
+//   Pink Pantheress / Zara Larsson - text="Stateside" song_spot="M" TAID="0" …
+//
+// Handled as one rule: cut the attribute blob off, then splice back whatever
+// title it carried (`title`, or `text`) and its `artist`. Whatever preceded the
+// blob is kept as the artist part when the blob names no artist of its own, so
+// the second shape survives as "Pink Pantheress / Zara Larsson - Stateside".
+// Returns None when there is no blob at all — the case of an ordinary title,
+// which is then left exactly as the station sent it.
+fn rebuild_structured_title(raw: &str) -> Option<String> {
+    let blob_start = attr_blob_start(raw)?;
+    let prefix = raw[..blob_start]
+        .trim()
+        .trim_end_matches(&['-', '–', '—', ':'][..])
+        .trim();
+    let blob = &raw[blob_start..];
+
+    let title = attr_value(blob, "title")
+        .or_else(|| attr_value(blob, "text"))
+        .filter(|s| !s.is_empty());
+    let artist = attr_value(blob, "artist")
+        .filter(|s| !s.is_empty())
+        .or(if prefix.is_empty() {
+            None
+        } else {
+            Some(prefix)
+        });
+
+    let rebuilt = match (artist, title) {
+        (Some(a), Some(t)) => format!("{} - {}", a, t),
+        (Some(a), None) => a.to_string(),
+        (None, Some(t)) => t.to_string(),
+        // A blob with nothing usable in it: better to show the raw string than
+        // to claim there is no track playing.
+        (None, None) => return None,
+    };
+    Some(rebuilt)
+}
+
 // Parse StreamTitle from ICY metadata string
 pub(crate) fn parse_stream_title(meta_str: &str) -> Option<String> {
     if let Some(start) = meta_str.find("StreamTitle='") {
         let rest = &meta_str[start + 13..];
         if let Some(end) = rest.find("';") {
-            let title = rest[..end].trim().to_string();
+            let title = rest[..end].trim();
             if !title.is_empty() {
-                return Some(title);
+                return Some(rebuild_structured_title(title).unwrap_or_else(|| title.to_string()));
             }
         }
     }
@@ -341,6 +430,84 @@ mod tests {
     fn parse_stream_title_empty_is_none() {
         assert_eq!(parse_stream_title("StreamTitle='';"), None);
         assert_eq!(parse_stream_title("no metadata here"), None);
+    }
+
+    // Real payload from an iHeartRadio stream: the unescaped quotes inside the
+    // `url` value used to leak into the displayed track name.
+    #[test]
+    fn parse_stream_title_rebuilds_structured_payload() {
+        let meta = "StreamTitle='title=\"BREAK MY HEART\",artist=\"Dua Lipa\",\
+                    url=\"song_spot=\"F\" MediaBaseId=\"0\" itunesTrackId=\"0\" \
+                    amgTrackId=\"-1\" TPID=\"116056426\" \
+                    amgArtworkURL=\"http://image.iheart.com/x.jpg\" \
+                    length=\"00:03:39\" spotInstanceId=\"07664985-571b\"';";
+        assert_eq!(
+            parse_stream_title(meta),
+            Some("Dua Lipa - BREAK MY HEART".to_string())
+        );
+    }
+
+    // The other real shape: a plain "Artist - " prefix followed by the blob,
+    // with the title in `text=` and no `artist=` key at all.
+    #[test]
+    fn parse_stream_title_keeps_prefix_as_artist() {
+        let meta = "StreamTitle='Pink Pantheress / Zara Larsson - text=\"Stateside\" \
+                    song_spot=\"M\" MediaBaseId=\"3120734\" itunesTrackId=\"0\" \
+                    amgTrackId=\"-1\" TAID=\"0\" TPID=\"354002035\" \
+                    cartcutId=\"0445711001\" \
+                    amgArtworkURL=\"https://i.iheart.com/v3/catalog/track/354002035\
+                    ?ops=fit(200,200),format(%22jpeg%22)\" \
+                    length=\"00:03:03\" unsID=\"-1\" spotInstanceId=\"-1\"';";
+        assert_eq!(
+            parse_stream_title(meta),
+            Some("Pink Pantheress / Zara Larsson - Stateside".to_string())
+        );
+    }
+
+    // A blob carrying no title at all: keep the plain part, drop the junk.
+    #[test]
+    fn parse_stream_title_strips_a_blob_with_no_title() {
+        let meta = "StreamTitle='Nirvana - Lithium song_spot=\"M\" MediaBaseId=\"0\"';";
+        assert_eq!(
+            parse_stream_title(meta),
+            Some("Nirvana - Lithium".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_stream_title_structured_with_one_field() {
+        assert_eq!(
+            parse_stream_title("StreamTitle='title=\"Solo Track\",url=\"x\"';"),
+            Some("Solo Track".to_string())
+        );
+        assert_eq!(
+            parse_stream_title("StreamTitle='artist=\"Only Artist\"';"),
+            Some("Only Artist".to_string())
+        );
+    }
+
+    // A plain title must survive untouched, including one that merely contains
+    // a quote or a key-looking word.
+    #[test]
+    fn parse_stream_title_leaves_plain_titles_alone() {
+        assert_eq!(
+            parse_stream_title("StreamTitle='Dua Lipa - Break My Heart';"),
+            Some("Dua Lipa - Break My Heart".to_string())
+        );
+        assert_eq!(
+            parse_stream_title("StreamTitle='The \"Subtitle\" Song';"),
+            Some("The \"Subtitle\" Song".to_string())
+        );
+    }
+
+    // `title=` must not be matched inside a longer key such as `subtitle=`.
+    #[test]
+    fn attr_value_requires_an_attribute_boundary() {
+        assert_eq!(attr_value("subtitle=\"nope\"", "title"), None);
+        assert_eq!(
+            attr_value("subtitle=\"nope\",title=\"yes\"", "title"),
+            Some("yes")
+        );
     }
 
     #[test]

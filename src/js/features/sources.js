@@ -6,11 +6,16 @@
 import { state } from '../core/state.js';
 import { saveSetting, loadCache, saveCache } from '../core/db.js';
 import { M3U_CONTENTS_API, M3U_CACHE_TTL_MS } from '../core/constants.js';
+import { hasStationNames } from '../core/playlist.js';
 import { fetchSomaStations } from './stations/catalog.js';
 import { fetchM3UStations } from './stations/m3u.js';
 
 const SOMA_TTL_MS = 24 * 60 * 60 * 1000;      // SomaFM channel cache: 1 day
 const M3U_INDEX_CAP = 8000;                    // bound the aggregated M3U index
+// Bump when the aggregate we pick (or how we map it) changes, so an index built
+// by an older build is rebuilt instead of being served until its TTL runs out.
+// v2: switched off the "lite" aggregate, whose entries were named after their URL.
+const M3U_INDEX_VERSION = 2;
 
 // --- Enabled state ----------------------------------------------------------
 
@@ -58,19 +63,36 @@ async function ensureSomaCache() {
 async function ensureM3UIndex() {
     if (m3uCache === undefined) m3uCache = await loadCache('m3uIndex');
     const cache = m3uCache;
-    if (fresh(cache, M3U_CACHE_TTL_MS)) return cache.list;
+    if (cache && cache.version === M3U_INDEX_VERSION && fresh(cache, M3U_CACHE_TTL_MS)) {
+        return cache.list;
+    }
     try {
         const res = await fetch(M3U_CONTENTS_API);
         if (!res.ok) throw new Error('GitHub API ' + res.status);
         const items = await res.json();
         // The aggregate playlists are the "---"-prefixed files the genre picker
-        // hides; prefer one mentioning "everything", else the first aggregate.
+        // hides. Their flavours differ a lot and the choice is not cosmetic:
+        //   *-lite  — bare URL lists with no #EXTINF, so parseM3U falls back to
+        //             naming every station after its own URL (and the smallest
+        //             of them is still 16 MB);
+        //   *-repo  — 27–100 MB, with several near-duplicate URLs per station
+        //             (differing only in ?t302=/?uuid=) that the URL-based
+        //             de-dup in search.js cannot collapse.
+        // "---everything-full.m3u" is the named, compact one (~0.5 MB, ~2 600
+        // stations), so filter the other two flavours out before picking.
         const aggregates = (Array.isArray(items) ? items : [])
             .filter(it => it.type === 'file' && /\.m3u$/i.test(it.name) && it.name.startsWith('---'));
-        const pick = aggregates.find(it => /everything/i.test(it.name)) || aggregates[0];
+        const named = aggregates.filter(it => !/-(lite|repo)\b/i.test(it.name));
+        const pick = named.find(it => /everything/i.test(it.name)) || named[0] || aggregates[0];
         if (!pick || !pick.download_url) throw new Error('no aggregate playlist found');
         const list = await fetchM3UStations(pick.download_url, M3U_INDEX_CAP);
-        m3uCache = { list, fetchedAt: Date.now() };
+        // The filename is only a hint — "---randomized.m3u" and "---sorted.m3u"
+        // are nameless lists too. Verify what actually came back and refuse an
+        // index whose stations are named after their own URL, so a rename or a
+        // format change upstream degrades to the stale cache instead of filling
+        // the list with URLs.
+        if (!hasStationNames(list)) throw new Error(`${pick.name} carries no station names`);
+        m3uCache = { list, fetchedAt: Date.now(), version: M3U_INDEX_VERSION };
         saveCache('m3uIndex', m3uCache);
         return list;
     } catch (e) {

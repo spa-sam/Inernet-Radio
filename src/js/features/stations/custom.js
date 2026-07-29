@@ -7,9 +7,9 @@ import { HEART_FILLED_SVG, HEART_OUTLINE_SVG } from '../../core/constants.js';
 import { getFaviconFromUrl } from '../../core/util.js';
 import { applyLogo } from '../../core/favicon.js';
 import { saveCustomStation, deleteCustomStation, updateCustomStation } from '../../core/db.js';
-import { toast, setStationName } from '../../ui/ui.js';
+import { toast, setStationName, openModal, closeModal } from '../../ui/ui.js';
 import { isFavorite, toggleFavorite } from './favorites.js';
-import { setupDragReorder, saveCustomOrder } from './render.js';
+import { setupDragReorder, saveCustomOrder, makeRowActivatable } from './render.js';
 import { exportCurrentStation } from './io.js';
 import { selectStation, playStation } from '../player.js';
 
@@ -57,7 +57,7 @@ export function openEditModal(station) {
     dom.editStationNameInput.value = station.name;
     dom.editStationUrlInput.value = station.url;
     dom.editStationGenreInput.value = station.tags || station.genre || '';
-    dom.editModal.classList.remove('hidden');
+    openModal(dom.editModal);
 }
 
 export async function saveEditedStation() {
@@ -95,7 +95,7 @@ export async function saveEditedStation() {
         }
     }
 
-    dom.editModal.classList.add('hidden');
+    closeModal(dom.editModal);
 }
 
 export function renderCustomStations() {
@@ -109,8 +109,10 @@ export function renderCustomStations() {
     state.customStations.forEach((station, index) => {
         const item = document.createElement('div');
         item.className = 'station-item';
+        makeRowActivatable(item, `Play ${station.name}`);
         if (state.currentStation && state.currentStation.stationuuid === station.stationuuid) {
             item.classList.add('active');
+            item.setAttribute('aria-current', 'true');
         }
 
         const logo = document.createElement('img');
@@ -139,6 +141,10 @@ export function renderCustomStations() {
         } else {
             favoriteBtn.innerHTML = HEART_OUTLINE_SVG;
         }
+        favoriteBtn.setAttribute('aria-label',
+            isFavorite(station.stationuuid)
+                ? `Remove ${station.name} from favorites`
+                : `Add ${station.name} to favorites`);
         favoriteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleFavorite(station, favoriteBtn);
@@ -149,6 +155,7 @@ export function renderCustomStations() {
         editBtn.className = 'action-btn edit-btn';
         editBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>`;
         editBtn.title = 'Edit';
+        editBtn.setAttribute('aria-label', `Edit ${station.name}`);
         editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openEditModal(station);
@@ -158,6 +165,8 @@ export function renderCustomStations() {
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'action-btn delete-btn';
         deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>`;
+        deleteBtn.title = 'Delete';
+        deleteBtn.setAttribute('aria-label', `Delete ${station.name}`);
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             removeCustomStation(station.stationuuid);

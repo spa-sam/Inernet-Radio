@@ -25,6 +25,16 @@ export function parseM3U(text) {
     return stations;
 }
 
+// parseM3U names an entry after its own URL when the playlist carries no
+// #EXTINF line for it. A handful of such entries is normal; a majority means
+// the playlist is a bare URL list, which is useless as a search index — the
+// station list would show nothing but stream URLs.
+export function hasStationNames(list) {
+    if (!Array.isArray(list) || list.length === 0) return false;
+    const named = list.filter(s => s.name && s.name !== s.url).length;
+    return named > list.length / 2;
+}
+
 // Parse a PLS playlist into {name, url} entries
 export function parsePLS(text) {
     const files = {};

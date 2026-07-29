@@ -10,6 +10,39 @@ import { isFavorite, toggleFavorite } from './favorites.js';
 import { addToBlacklist } from './blacklist.js';
 import { selectStation } from '../player.js';
 
+// Make a list row behave like a button for keyboard users: focusable, activated
+// by Enter / Space, and navigable with the arrow keys within its container.
+// The row keeps its own action buttons as separate tab stops.
+export function makeRowActivatable(row, label) {
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', label);
+
+    row.addEventListener('keydown', (e) => {
+        // Ignore keys aimed at the nested action buttons.
+        if (e.target !== row) return;
+
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            // Space is also the global play/stop shortcut — keep it from
+            // bubbling to the document handler.
+            e.stopPropagation();
+            row.click();
+            return;
+        }
+
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            const rows = [...row.parentElement.children]
+                .filter((el) => el.getAttribute('role') === 'button');
+            const next = rows[rows.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1)];
+            if (next) {
+                e.preventDefault();
+                next.focus();
+            }
+        }
+    });
+}
+
 export function renderStations(stations, container = dom.stationsList, append = false) {
     if (!append) container.innerHTML = '';
 
@@ -26,8 +59,10 @@ export function renderStations(stations, container = dom.stationsList, append = 
         const item = document.createElement('div');
         item.className = 'station-item';
         item.dataset.stationuuid = station.stationuuid;
+        makeRowActivatable(item, `Play ${station.name}`);
         if (state.currentStation && state.currentStation.stationuuid === station.stationuuid) {
             item.classList.add('active');
+            item.setAttribute('aria-current', 'true');
             state.currentStationIndex = index;
         }
 
@@ -58,6 +93,10 @@ export function renderStations(stations, container = dom.stationsList, append = 
         } else {
             favBtn.innerHTML = HEART_OUTLINE_SVG;
         }
+        favBtn.setAttribute('aria-label',
+            isFavorite(station.stationuuid)
+                ? `Remove ${station.name} from favorites`
+                : `Add ${station.name} to favorites`);
         favBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleFavorite(station, favBtn);
@@ -68,6 +107,7 @@ export function renderStations(stations, container = dom.stationsList, append = 
         blacklistBtn.className = 'action-btn blacklist-btn';
         blacklistBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>`;
         blacklistBtn.title = 'Hide station';
+        blacklistBtn.setAttribute('aria-label', `Hide ${station.name}`);
         blacklistBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             addToBlacklist(station);
