@@ -11,8 +11,10 @@ import { refreshVisualizerSize } from '../services/visualizer.js';
 import { stopStation, selectStation } from '../features/player.js';
 import { addToTrackHistory } from '../features/stations.js';
 
-// Non-blocking toast notification (replaces native alert)
-export function toast(message, type = 'info', duration = 3200) {
+// Non-blocking toast notification (replaces native alert). `action`, when
+// given as { label, onClick }, adds a button (e.g. "Undo") that runs onClick
+// and dismisses the toast immediately instead of waiting out the timer.
+export function toast(message, type = 'info', duration = 3200, action = null) {
     if (!state.toastContainer) {
         state.toastContainer = document.createElement('div');
         state.toastContainer.className = 'toast-container';
@@ -24,13 +26,33 @@ export function toast(message, type = 'info', duration = 3200) {
     }
     const el = document.createElement('div');
     el.className = 'toast toast-' + type;
-    el.textContent = message;
-    state.toastContainer.appendChild(el);
 
-    setTimeout(() => {
+    const text = document.createElement('span');
+    text.className = 'toast-text';
+    text.textContent = message;
+    el.appendChild(text);
+
+    let dismissTimer = null;
+    const dismiss = () => {
+        if (dismissTimer) clearTimeout(dismissTimer);
         el.classList.add('toast-out');
         el.addEventListener('animationend', () => el.remove(), { once: true });
-    }, duration);
+    };
+
+    if (action) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'toast-action';
+        btn.textContent = action.label;
+        btn.addEventListener('click', () => {
+            action.onClick();
+            dismiss();
+        });
+        el.appendChild(btn);
+    }
+
+    state.toastContainer.appendChild(el);
+    dismissTimer = setTimeout(dismiss, duration);
 }
 
 // --- Modal focus management -------------------------------------------------
@@ -251,7 +273,9 @@ export async function toggleCompactMode(forceCompact = null) {
     saveSetting('compactMode', state.settings.compactMode);
 
     // The compact widget reuses the wide studio player card; only the
-    // header and the search / stations sidebar are hidden (via CSS).
+    // header and the search / stations sidebar are hidden (via CSS). The
+    // native title bar stays, so pin-on-top and exiting compact mode get
+    // their own row on the card instead (.compact-window-bar).
     if (state.settings.compactMode) {
         dom.appContainer.classList.add('compact', 'wide');
     } else {
@@ -265,6 +289,15 @@ export async function toggleCompactMode(forceCompact = null) {
             const appWindow = getCurrentWindow();
 
             if (state.settings.compactMode) {
+                // Like Winamp's shade mode: a fixed-size widget, not a fluid
+                // one. The card's styles aren't built to reflow, and scaling
+                // it to track a resizable window (tried via CSS `zoom`) kept
+                // hitting edge cases (scrollbars, width/height drifting out of
+                // sync). Simplest and most robust is to just not allow
+                // resizing at all — the window is sized to fit the card once,
+                // on entry.
+                await appWindow.setResizable(false);
+
                 // Fit the widget height to the player card. Apply the compact
                 // width first, wait for the webview to reflow, then shrink the
                 // window so its content area matches the card exactly.
@@ -273,14 +306,21 @@ export async function toggleCompactMode(forceCompact = null) {
                 const reflowed = waitForWindowResize();
                 await appWindow.setSize(new W.LogicalSize(470, 740));
                 await reflowed;
-                const cardHeight = dom.playerSection.getBoundingClientRect().height;
-                // 32px = .radio-layout padding (1rem top + bottom), +2px guard
-                const neededInner = Math.ceil(cardHeight) + 34;
-                const delta = neededInner - window.innerHeight;
-                if (delta !== 0) {
-                    await appWindow.setSize(new W.LogicalSize(470, 740 + delta));
+                // Where the card's bottom edge actually sits vs. the bottom
+                // of the viewport: positive means it's clipped (window too
+                // short), negative means there's dead space below it (window
+                // too tall) — either way, this closes the gap exactly.
+                // (document.documentElement.scrollHeight doesn't work for
+                // this: body has `min-height: 100vh`, so scrollHeight can
+                // never report *less* than the current viewport, which hid
+                // the "window too tall" case entirely.)
+                const cardRect = dom.playerSection.getBoundingClientRect();
+                const overflow = Math.round(cardRect.top + cardRect.height) - window.innerHeight;
+                if (overflow !== 0) {
+                    await appWindow.setSize(new W.LogicalSize(470, 740 + overflow));
                 }
             } else {
+                await appWindow.setResizable(true);
                 const size = getNormalWindowSize();
                 await appWindow.setMinSize(new window.__TAURI__.window.LogicalSize(size.minW, size.minH));
                 await appWindow.setSize(new window.__TAURI__.window.LogicalSize(size.w, size.h));
@@ -304,6 +344,9 @@ export function exitCompactMode() {
     toggleCompactMode(false);
 }
 
+// Two pin buttons exist (header, for normal/narrow use; the compact widget's
+// own title bar, since the header is hidden there) — only one is ever visible
+// at a time, but both must reflect the same state.
 export async function toggleAlwaysOnTop() {
     if (hasTauriApi) {
         try {
@@ -311,13 +354,16 @@ export async function toggleAlwaysOnTop() {
             const appWindow = getCurrentWindow();
             state.isAlwaysOnTop = !state.isAlwaysOnTop;
             await appWindow.setAlwaysOnTop(state.isAlwaysOnTop);
-            dom.alwaysOnTopBtn.classList.toggle('active', state.isAlwaysOnTop);
-            dom.alwaysOnTopBtn.setAttribute('aria-pressed', String(state.isAlwaysOnTop));
+            document.querySelectorAll('.pin-btn').forEach((btn) => {
+                btn.classList.toggle('active', state.isAlwaysOnTop);
+                btn.setAttribute('aria-pressed', String(state.isAlwaysOnTop));
+            });
         } catch (e) {
             console.error('Failed to toggle always on top:', e);
         }
     }
 }
+
 
 // Apply narrow / wide layout to the UI (and resize the window)
 export async function applyViewMode(wide, isInit = false) {
@@ -598,17 +644,36 @@ export function setupRadioSplitter() {
     if (!splitter || !layout || !appContainer) return;
 
     let dragging = false;
+    // Cached once per drag instead of re-read on every mousemove: the layout
+    // box doesn't move while dragging, but getBoundingClientRect() forces a
+    // style/layout recalc, and doing that on every mouse-move frame was the
+    // actual cause of the splitter feeling laggy while dragging.
+    let rect = null;
+    let pendingClientX = null;
+    let rafId = null;
+
+    const applyPending = () => {
+        rafId = null;
+        if (pendingClientX == null || !rect) return;
+        const px = clampMainWidth(pendingClientX - rect.left, rect.width);
+        appContainer.style.setProperty('--radio-main-width', px + 'px');
+    };
 
     const onMove = (e) => {
         if (!dragging) return;
-        const rect = layout.getBoundingClientRect();
-        const px = clampMainWidth(e.clientX - rect.left, rect.width);
-        appContainer.style.setProperty('--radio-main-width', px + 'px');
+        pendingClientX = e.clientX;
+        // Coalesce bursts of mousemove into at most one style write per frame.
+        if (rafId == null) rafId = requestAnimationFrame(applyPending);
     };
 
     const onUp = () => {
         if (!dragging) return;
         dragging = false;
+        rect = null;
+        if (rafId != null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
         document.body.classList.remove('resizing-col');
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
@@ -623,6 +688,7 @@ export function setupRadioSplitter() {
     splitter.addEventListener('mousedown', (e) => {
         e.preventDefault();
         dragging = true;
+        rect = layout.getBoundingClientRect();
         document.body.classList.add('resizing-col');
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);

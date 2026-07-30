@@ -173,6 +173,10 @@ export function buildEqUi() {
         slider.step = '1';
         slider.value = String(state.settings.eqGains[i] || 0);
         slider.dataset.band = String(i);
+        // The visible frequency label is a sibling <span>, not a <label>, so
+        // a screen reader would otherwise announce "slider, 0, -12 to 12"
+        // with no indication of which band this is.
+        slider.setAttribute('aria-label', `${band.label} equalizer band`);
         slider.addEventListener('input', onEqSliderInput);
 
         const label = document.createElement('span');

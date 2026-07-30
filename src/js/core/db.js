@@ -416,6 +416,11 @@ export async function saveBlacklist(station, blacklist) {
     );
 }
 
+export async function deleteFromBlacklist(stationuuid, blacklist) {
+    writeLocal('blacklist', blacklist);
+    await execDb('DELETE FROM blacklist WHERE stationuuid = $1', [stationuuid], 'Delete from blacklist');
+}
+
 // --- Recently played ----------------------------------------------
 export async function saveRecentlyPlayed(station, recentlyPlayed) {
     writeLocal('recentlyPlayed', recentlyPlayed);

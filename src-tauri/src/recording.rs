@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::time::timeout;
 
 use crate::metadata::{IcyDemux, IcyEvent};
@@ -110,8 +110,11 @@ async fn record_single(
     path: &str,
     stop: &Arc<AtomicBool>,
 ) {
+    // Buffered so each network chunk (often much smaller than the 16 KiB
+    // scratch buffer) doesn't turn into its own dispatch to tokio's blocking
+    // file-IO thread pool; writes now coalesce into 64 KiB flushes.
     let mut file = match tokio::fs::File::create(path).await {
-        Ok(f) => f,
+        Ok(f) => BufWriter::with_capacity(64 * 1024, f),
         Err(e) => {
             emit_recording_error(app, format!("Cannot create {}: {}", path, e));
             return;
@@ -161,7 +164,7 @@ async fn record_split(
     let base = std::path::Path::new(base_path);
     let mut index = 1usize;
     let mut file = match tokio::fs::File::create(segment_path(base, index, None)).await {
-        Ok(f) => f,
+        Ok(f) => BufWriter::with_capacity(64 * 1024, f),
         Err(e) => {
             emit_recording_error(app, format!("Cannot create recording segment: {}", e));
             return;
@@ -192,7 +195,7 @@ async fn record_split(
                 let _ = file.flush().await;
                 index += 1;
                 match tokio::fs::File::create(segment_path(base, index, Some(&title))).await {
-                    Ok(f) => file = f,
+                    Ok(f) => file = BufWriter::with_capacity(64 * 1024, f),
                     Err(e) => {
                         emit_recording_error(app, format!("Cannot create segment: {}", e));
                         break;

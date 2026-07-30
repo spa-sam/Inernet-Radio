@@ -24,9 +24,17 @@ pub(crate) struct LiveMetadata {
     pub(crate) title: String,
 }
 
-// Parse URL into host, port, path, and is_ssl
+// Parse URL into host, port, path, and is_ssl. Rejects any component
+// containing a control character (in particular CR/LF): host and path are
+// spliced verbatim into a hand-built "GET {path} HTTP/1.0\r\nHost: {host}..."
+// request line elsewhere (proxy.rs, metadata.rs), so a station URL carrying an
+// encoded %0d%0a would otherwise let a malicious playlist/redirect inject
+// extra headers or a smuggled second request into that connection.
 pub(crate) fn parse_url(url: &str) -> Option<(String, u16, String, bool)> {
     let url = url.trim();
+    if url.contains(|c: char| c.is_control()) {
+        return None;
+    }
     let (rest, is_ssl) = if let Some(stripped) = url.strip_prefix("https://") {
         (stripped, true)
     } else if let Some(stripped) = url.strip_prefix("http://") {
@@ -433,6 +441,26 @@ mod tests {
     #[test]
     fn parse_url_rejects_bad_port() {
         assert!(parse_url("http://radio.fm:notaport/live").is_none());
+    }
+
+    // A crafted path/host containing raw CR/LF would be spliced verbatim into
+    // the hand-built "GET {path} HTTP/1.0\r\nHost: {host}..." request line
+    // (proxy.rs, metadata.rs), letting the request be split into extra
+    // headers or a smuggled second request. Percent-decoding a station URL
+    // (playlist import, redirect chain) is how such bytes would arrive here.
+    #[test]
+    fn parse_url_rejects_crlf_in_path() {
+        assert!(parse_url("http://radio.fm/live\r\nX-Injected: 1").is_none());
+    }
+
+    #[test]
+    fn parse_url_rejects_crlf_in_host() {
+        assert!(parse_url("http://radio.fm\r\nX-Injected: 1/live").is_none());
+    }
+
+    #[test]
+    fn parse_url_rejects_bare_lf() {
+        assert!(parse_url("http://radio.fm/live\nGET /x HTTP/1.0").is_none());
     }
 
     #[test]

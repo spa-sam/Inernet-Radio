@@ -92,6 +92,7 @@
     --radius-lg: 18px;
     --radius-md: 12px;
     --radius-sm: 8px;
+    --radius-pill: 20px;
 
     /* Transitions. Deliberately NOT `all`: that also animates `visibility` and
        layout properties, which is how a dialog once stayed unfocusable for half

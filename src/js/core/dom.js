@@ -74,6 +74,9 @@ export const dom = {
     trackHistoryList: byId('track-history-list'),
     clearHistoryBtn: byId('clear-history-btn'),
 
+    // Blacklisted stations (Settings)
+    blacklistList: byId('blacklist-list'),
+
     // Custom stations
     customNameInput: byId('custom-name'),
     customUrlInput: byId('custom-url'),
@@ -112,6 +115,7 @@ export const dom = {
     enterCompactBtn: byId('enter-compact-btn'),
     exitCompactBtn: byId('exit-compact-btn'),
     alwaysOnTopBtn: byId('always-on-top-btn'),
+    compactPinBtn: byId('compact-pin-btn'),
     updateActionBtn: byId('update-action-btn'),
     updateStatus: byId('update-status'),
     updateProgressWrap: byId('update-progress-wrap'),

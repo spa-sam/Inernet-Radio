@@ -9,6 +9,7 @@
     "core:window:allow-set-size",
     "core:window:allow-set-min-size",
     "core:window:allow-set-always-on-top",
+    "core:window:allow-set-resizable",
     "dialog:default",
     "fs:allow-write-text-file",
     "sql:default",

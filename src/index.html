@@ -45,6 +45,21 @@
                         <svg viewBox="0 0 24 24"><rect x="3" y="6" width="8" height="12" rx="1.4" fill="currentColor"/><rect x="13" y="6" width="8" height="12" rx="1.4" fill="currentColor"/></svg>
                     </button>
                 </div>
+
+                <!-- Window controls: pin on top + enter compact widget mode.
+                     Lives in the header (not the player card) so it stays
+                     reachable even when the player is scroll-collapsed in
+                     narrow view. Exiting compact mode has its own control on
+                     the card itself (see .compact-window-bar below) since the
+                     header is fully hidden while the widget is open. -->
+                <div class="window-controls">
+                    <button id="always-on-top-btn" class="control-circle-btn pin-btn" title="Pin on top" aria-label="Pin on top" aria-pressed="false">
+                        <svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" fill="currentColor"/></svg>
+                    </button>
+                    <button id="enter-compact-btn" class="control-circle-btn" title="Compact mode" aria-label="Enter compact mode">
+                        <svg viewBox="0 0 24 24"><path d="M19 19H5V5h14v14zM7 7h10v2H7V7z" fill="currentColor"/></svg>
+                    </button>
+                </div>
             </div>
         </header>
 
@@ -54,13 +69,14 @@
                 <!-- Player column -->
                 <div class="radio-main" id="radio-main">
                     <div class="player-section">
-                        <!-- Window controls -->
-                        <div class="window-controls">
-                            <button id="always-on-top-btn" class="control-circle-btn" title="Pin on top" aria-label="Pin on top" aria-pressed="false">
+                        <!-- Compact widget mode only: the native title bar
+                             stays (drag/resize/minimize/close all work as
+                             usual), but it hides the app header along with
+                             it, so pin-on-top and exiting compact mode get a
+                             home here instead. -->
+                        <div class="compact-window-bar">
+                            <button id="compact-pin-btn" class="control-circle-btn pin-btn" title="Pin on top" aria-label="Pin on top" aria-pressed="false">
                                 <svg viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" fill="currentColor"/></svg>
-                            </button>
-                            <button id="enter-compact-btn" class="control-circle-btn" title="Compact mode" aria-label="Enter compact mode">
-                                <svg viewBox="0 0 24 24"><path d="M19 19H5V5h14v14zM7 7h10v2H7V7z" fill="currentColor"/></svg>
                             </button>
                             <button id="exit-compact-btn" class="control-circle-btn" title="Exit compact mode" aria-label="Exit compact mode">
                                 <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" fill="currentColor"/></svg>
@@ -452,6 +468,10 @@
                         Split recording into one file per track
                     </label>
                 </div>
+
+                <h3>Blacklisted stations</h3>
+                <p class="settings-hint">Stations hidden from search results. Unhide to bring one back.</p>
+                <div id="blacklist-list" class="blacklist-list"></div>
 
                 <h3>About</h3>
                 <p class="about-text">

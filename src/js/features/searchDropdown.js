@@ -139,6 +139,19 @@ export function setupSearchDropdown() {
         if (first) first.replaceWith(renderSuggestions(dom.searchInput.value));
     });
 
+    // Escape dismisses the dropdown: previously the only way to close it was
+    // a click outside, so a keyboard user who opened it by focusing the
+    // search box had no way to back out of it.
+    const onEscape = (e) => {
+        if (e.key !== 'Escape') return;
+        if (dom.searchDropdown.classList.contains('hidden')) return;
+        e.stopPropagation();
+        closeDropdown();
+        dom.searchInput.focus();
+    };
+    dom.searchInput.addEventListener('keydown', onEscape);
+    dom.searchDropdown.addEventListener('keydown', onEscape);
+
     // Close when clicking outside the search box
     document.addEventListener('click', (e) => {
         if (!dom.searchDropdown.classList.contains('hidden') && !e.target.closest('.search-box')) {

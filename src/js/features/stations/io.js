@@ -108,9 +108,16 @@ async function importStationsJson(text) {
 
     const isCustom = data.some(s => s.stationuuid && s.stationuuid.startsWith('custom_'));
 
+    // Unlike the M3U/PLS/OPML importers, this format is the app's own JSON
+    // export re-imported — but the file itself is just as untrusted (it can
+    // be hand-edited or come from someone else), so the stream URL gets the
+    // same http(s)-only check before it can reach the <audio>/proxy layer.
+    const validUrl = (s) => s.url && /^https?:/i.test(s.url);
+
     if (isCustom) {
         const added = [];
         for (const station of data) {
+            if (!validUrl(station)) continue;
             if (!state.customStations.some(s => s.stationuuid === station.stationuuid)) {
                 state.customStations.push(station);
                 added.push(station);
@@ -122,6 +129,7 @@ async function importStationsJson(text) {
     } else {
         const added = [];
         for (const station of data) {
+            if (!validUrl(station)) continue;
             if (!state.favorites.some(f => f.stationuuid === station.stationuuid)) {
                 state.favorites.push(station);
                 added.push(station);

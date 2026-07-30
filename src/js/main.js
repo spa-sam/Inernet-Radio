@@ -44,6 +44,7 @@ import {
     renderCustomStations,
     renderRecentlyPlayed,
     renderTrackHistory,
+    renderBlacklist,
     clearTrackHistory,
     updateCurrentStationInfo,
     exportFavorites,
@@ -220,6 +221,9 @@ async function init() {
 
     // Render track history
     renderTrackHistory();
+
+    // Render the blacklisted-stations management list (Settings)
+    renderBlacklist();
 
     // Open the Favorites tab first when the user already has favorites;
     // otherwise default to Search with the popular stations list.
@@ -677,6 +681,7 @@ dom.visualizerCanvas.addEventListener('click', cycleVisualizerStyle);
 dom.enterCompactBtn.addEventListener('click', enterCompactMode);
 dom.exitCompactBtn.addEventListener('click', exitCompactMode);
 dom.alwaysOnTopBtn.addEventListener('click', toggleAlwaysOnTop);
+if (dom.compactPinBtn) dom.compactPinBtn.addEventListener('click', toggleAlwaysOnTop);
 
 // View switcher (narrow / wide)
 if (dom.viewSwitch) {

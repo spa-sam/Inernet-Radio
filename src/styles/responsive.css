@@ -71,7 +71,6 @@ body.resizing-col .radio-splitter::before {
     box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5);
     cursor: pointer; /* click outside the controls to expand / scroll to top */
 }
-.container:not(.wide) .player-collapsed .window-controls,
 .container:not(.wide) .player-collapsed .station-meta,
 .container:not(.wide) .player-collapsed .transport-info,
 .container:not(.wide) .player-collapsed .now-eyebrow,
@@ -210,9 +209,13 @@ body.resizing-col .radio-splitter::before {
 
 /* ==========================================================================
    COMPACT WIDGET MODE (always-on-top mini player)
-   The widget keeps the .wide class while active, so it reuses the full
-   studio player card. Only the app header and the search / stations
-   sidebar are dropped.
+   Fixed-size, like Winamp's shade mode — not resizable (see
+   toggleCompactMode), so the card never needs to reflow or scale. The widget
+   keeps the .wide class while active, so it reuses the full studio player
+   card. The native title bar stays (drag/minimize/close all work normally);
+   only the header (brand/tabs/view-switch/pin/enter-compact) and the search
+   / stations sidebar are dropped — pin + exit-compact get their own row on
+   the card instead (.compact-window-bar).
    ========================================================================== */
 .container.compact {
     max-width: 100%;
@@ -220,16 +223,22 @@ body.resizing-col .radio-splitter::before {
 }
 .container.compact .app-header,
 .container.compact .radio-side,
-.container.compact .radio-splitter,
-.container.compact #enter-compact-btn {
+.container.compact .radio-splitter {
     display: none !important;
 }
-/* The player column fills the whole widget width */
+/* The player column fills the whole widget width. overflow is reset to
+   hidden (inherited as `auto`/vertical-only from the wide-view rule above):
+   the window is sized in JS to fit the card exactly, so this is a backstop
+   against a scrollbar from a stray sub-pixel mismatch, not a deliberate
+   scroll area. */
 .container.compact .radio-main {
     width: 100%;
     max-width: none;
     min-width: 0;
     padding: 0;
+    overflow: hidden;
 }
+.container.compact .radio-layout { overflow: hidden; }
+.container.compact .compact-window-bar { display: flex; }
 .container.compact #exit-compact-btn { display: flex; }
 

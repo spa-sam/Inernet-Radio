@@ -6,6 +6,18 @@ import { adjustBrightness } from '../core/util.js';
 import { saveSetting } from '../core/db.js';
 import { ensureAudioGraph } from './audio.js';
 
+// Canvas gradients for the "dance" style, cached across frames. Recreating
+// one every bar every frame (20 bars * ~60fps = up to ~1200/sec) allocates
+// steadily on the audio-visualization hot path for no visual benefit, since
+// each gradient's color stops depend only on the base color and the bar's
+// vertical extent. The per-bar gradient additionally keys on that extent,
+// rounded to a small bucket so near-identical bars share one gradient
+// instead of each getting its own (the rounding is sub-pixel and invisible).
+let glowGradientKey = '';
+let glowGradient = null;
+let barGradientColorKey = '';
+const barGradientCache = new Map();
+
 function drawVisualization() {
     if (!state.settings.visualizerEnabled || !state.analyser) return;
 
@@ -188,15 +200,27 @@ function drawVisualization() {
         for (let j = 0; j < 5; j++) bassSum += dataArray[j];
         const bassInten = (bassSum / (5 * 255)) * sensitivity;
 
-        // Draw a soft background glow pulsing with the bass
+        // Draw a soft background glow pulsing with the bass. The gradient's
+        // geometry is fixed for a given canvas size and color (only the alpha
+        // varies with bassInten), so it only needs to be rebuilt when either
+        // changes instead of every time the bass crosses the threshold.
         if (bassInten > 0.4) {
-            const glow = ctx.createRadialGradient(width / 2, centerY, 10, width / 2, centerY, width / 2);
-            glow.addColorStop(0, adjustBrightness(baseColor, 0.3));
-            glow.addColorStop(1, 'transparent');
+            const glowKey = `${baseColor}|${width}|${height}`;
+            if (glowKey !== glowGradientKey) {
+                glowGradient = ctx.createRadialGradient(width / 2, centerY, 10, width / 2, centerY, width / 2);
+                glowGradient.addColorStop(0, adjustBrightness(baseColor, 0.3));
+                glowGradient.addColorStop(1, 'transparent');
+                glowGradientKey = glowKey;
+            }
             ctx.globalAlpha = bassInten * 0.2;
-            ctx.fillStyle = glow;
+            ctx.fillStyle = glowGradient;
             ctx.fillRect(0, 0, width, height);
             ctx.globalAlpha = 1.0;
+        }
+
+        if (baseColor !== barGradientColorKey) {
+            barGradientCache.clear();
+            barGradientColorKey = baseColor;
         }
 
         for (let i = 0; i < numBars; i++) {
@@ -208,11 +232,17 @@ function drawVisualization() {
             const yTop = centerY - value - 2;
             const barHeight = (value * 2) + 4;
 
-            // Gradient effect from centre to edges
-            const grad = ctx.createLinearGradient(0, centerY - value, 0, centerY + value);
-            grad.addColorStop(0, adjustBrightness(baseColor, 1.5));
-            grad.addColorStop(0.5, baseColor);
-            grad.addColorStop(1, adjustBrightness(baseColor, 1.5));
+            // Gradient effect from centre to edges — cached per rounded value
+            // bucket so bars with near-identical heights share one gradient.
+            const bucket = Math.round(value / 2) * 2;
+            let grad = barGradientCache.get(bucket);
+            if (!grad) {
+                grad = ctx.createLinearGradient(0, centerY - bucket, 0, centerY + bucket);
+                grad.addColorStop(0, adjustBrightness(baseColor, 1.5));
+                grad.addColorStop(0.5, baseColor);
+                grad.addColorStop(1, adjustBrightness(baseColor, 1.5));
+                barGradientCache.set(bucket, grad);
+            }
 
             ctx.fillStyle = grad;
             ctx.shadowBlur = 12 * (value / (height / 2));

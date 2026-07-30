@@ -7,8 +7,9 @@ import { HEART_FILLED_SVG, HEART_OUTLINE_SVG } from '../../core/constants.js';
 import { applyLogo } from '../../core/favicon.js';
 import { saveSetting } from '../../core/db.js';
 import { isFavorite, toggleFavorite } from './favorites.js';
-import { addToBlacklist } from './blacklist.js';
+import { addToBlacklist, removeFromBlacklist, renderBlacklist } from './blacklist.js';
 import { selectStation } from '../player.js';
+import { toast } from '../../ui/ui.js';
 
 // --- List event delegation --------------------------------------------------
 // Rows used to carry their own listeners: one for the row plus one per action
@@ -144,6 +145,17 @@ export function renderStations(stations, container = dom.stationsList, append = 
                     if (state.currentStationIndex > i) state.currentStationIndex--;
                 }
                 reindexRows(container);
+                renderBlacklist();
+                // Hiding used to be permanent with no way back (short of the
+                // Settings list below). An immediate Undo covers the common
+                // case: a misclick right next to the favorite heart.
+                toast(`Hid ${station.name}`, 'info', 6000, {
+                    label: 'Undo',
+                    onClick: () => {
+                        removeFromBlacklist(station.stationuuid);
+                        renderBlacklist();
+                    }
+                });
             }
         }
     });

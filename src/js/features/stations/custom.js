@@ -28,6 +28,10 @@ export async function addCustomStation() {
         toast('Enter a station name and URL', 'error');
         return;
     }
+    if (!/^https?:/i.test(url)) {
+        toast('Stream URL must start with http:// or https://', 'error');
+        return;
+    }
 
     const station = {
         stationuuid: newCustomStationId(),
@@ -74,6 +78,10 @@ export async function saveEditedStation() {
 
     if (!name || !url) {
         toast('Enter a name and URL', 'error');
+        return;
+    }
+    if (!/^https?:/i.test(url)) {
+        toast('Stream URL must start with http:// or https://', 'error');
         return;
     }
 

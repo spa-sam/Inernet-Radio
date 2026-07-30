@@ -525,21 +525,25 @@ impl Resampler {
         }
     }
 
-    fn process(&mut self, input: &[f32]) -> Vec<f32> {
+    // Writes into `out` (cleared first) instead of returning a fresh Vec, so
+    // the caller can reuse one scratch buffer across the life of the decode
+    // loop rather than allocating on every packet (~38/sec for MP3).
+    fn process(&mut self, input: &[f32], out: &mut Vec<f32>) {
+        out.clear();
         let n = input.len() / 2;
         if n == 0 {
-            return Vec::new();
+            return;
         }
         if self.in_rate == PCM_OUT_RATE {
             self.prev = [input[(n - 1) * 2], input[(n - 1) * 2 + 1]];
-            return input.to_vec();
+            out.extend_from_slice(input);
+            return;
         }
         if !self.primed {
             self.prev = [input[0], input[1]];
             self.primed = true;
         }
         let step = self.in_rate as f64 / PCM_OUT_RATE as f64;
-        let mut out = Vec::new();
         let mut pos = self.frac;
         while pos < n as f64 {
             let i = pos.floor() as i64;
@@ -552,7 +556,6 @@ impl Resampler {
         }
         self.prev = [input[(n - 1) * 2], input[(n - 1) * 2 + 1]];
         self.frac = (pos - n as f64).max(0.0);
-        out
     }
 }
 
@@ -606,6 +609,13 @@ fn decode_to_pcm(
     };
 
     let mut resampler: Option<Resampler> = None;
+    // Reused across iterations instead of allocating fresh per packet (~38
+    // times/sec for MP3): `stereo` and `resampled` never leave this loop, so
+    // clearing and refilling them is enough. `bytes` cannot be reused the same
+    // way — its ownership moves into `pcm_tx` on every send — so it still
+    // allocates once per packet; that leaves one allocation instead of three.
+    let mut stereo: Vec<f32> = Vec::new();
+    let mut resampled: Vec<f32> = Vec::new();
     // Loop ends when next_packet() returns Err (end of stream / IO error).
     while let Ok(packet) = format.next_packet() {
         if packet.track_id() != track_id {
@@ -630,7 +640,8 @@ fn decode_to_pcm(
         let samples = sbuf.samples();
 
         // Downmix/duplicate to stereo interleaved.
-        let mut stereo = Vec::with_capacity(frames * 2);
+        stereo.clear();
+        stereo.reserve(frames * 2);
         for f in 0..frames {
             let base = f * in_ch;
             let l = samples[base];
@@ -643,10 +654,10 @@ fn decode_to_pcm(
         if r.in_rate != in_rate {
             *r = Resampler::new(in_rate);
         }
-        let out = r.process(&stereo);
+        r.process(&stereo, &mut resampled);
 
-        let mut bytes = Vec::with_capacity(out.len() * 4);
-        for s in out {
+        let mut bytes = Vec::with_capacity(resampled.len() * 4);
+        for s in &resampled {
             bytes.extend_from_slice(&s.to_le_bytes());
         }
         if !bytes.is_empty() && pcm_tx.blocking_send(bytes).is_err() {
