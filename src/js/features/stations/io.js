@@ -11,7 +11,7 @@ import { renderCustomStations } from './custom.js';
 // Re-exported so existing importers (stations/m3u.js) keep their entry point.
 export { parseM3U };
 
-async function exportToJson(data, defaultFilename) {
+export async function exportToJson(data, defaultFilename) {
     if (hasTauriApi) {
         try {
             const { save } = window.__TAURI__.dialog;
@@ -141,8 +141,7 @@ async function importStationsJson(text) {
 }
 
 // Import stations from a JSON, M3U/M3U8, PLS or OPML file
-export function importStations(event) {
-    const file = event.target.files[0];
+export function importStationFile(file) {
     if (!file) return;
 
     const ext = file.name.toLowerCase().split('.').pop();
@@ -165,5 +164,10 @@ export function importStations(event) {
         }
     };
     reader.readAsText(file);
+}
+
+// <input type="file"> change handler
+export function importStations(event) {
+    importStationFile(event.target.files[0]);
     event.target.value = '';
 }

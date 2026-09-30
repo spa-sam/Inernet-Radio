@@ -4,10 +4,11 @@ import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 import { apiFetch } from '../../services/api.js';
 import { renderStations } from './render.js';
+import { showEmpty, showLoading } from '../../core/placeholders.js';
 
 export async function loadPopularStations() {
     state.searchPage.active = false;
-    dom.stationsList.innerHTML = '<div class="loading">Loading popular stations...</div>';
+    showLoading(dom.stationsList, 'Loading popular stations...');
 
     try {
         const stations = await apiFetch('/stations/topclick/20');
@@ -15,7 +16,7 @@ export async function loadPopularStations() {
         renderStations(stations);
     } catch (error) {
         console.error('Load error:', error);
-        dom.stationsList.innerHTML = '<div class="loading-hint">Find radio stations using the search above</div>';
+        showEmpty(dom.stationsList, 'Find radio stations using the search above');
     }
 }
 
@@ -46,13 +47,13 @@ export async function fetchSomaStations() {
 // Load SomaFM curated channels as stations
 export async function loadSomaFM() {
     state.searchPage.active = false;
-    dom.stationsList.innerHTML = '<div class="loading">Loading SomaFM...</div>';
+    showLoading(dom.stationsList, 'Loading SomaFM...');
 
     try {
         const stations = await fetchSomaStations();
 
         if (stations.length === 0) {
-            dom.stationsList.innerHTML = '<div class="loading-hint">SomaFM returned no stations</div>';
+            showEmpty(dom.stationsList, 'SomaFM returned no stations');
             state.currentStationsList = [];
             return;
         }
@@ -61,6 +62,6 @@ export async function loadSomaFM() {
         renderStations(stations);
     } catch (error) {
         console.error('SomaFM load error:', error);
-        dom.stationsList.innerHTML = '<div class="loading-hint">Failed to load SomaFM</div>';
+        showEmpty(dom.stationsList, 'Failed to load SomaFM');
     }
 }

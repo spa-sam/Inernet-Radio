@@ -3,7 +3,7 @@
 
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
-import { HEART_FILLED_SVG, HEART_OUTLINE_SVG } from '../../core/constants.js';
+import { HEART_FILLED_SVG, HEART_OUTLINE_SVG, EDIT_ICON_SVG, TRASH_ICON_SVG } from '../../core/icons.js';
 import { getFaviconFromUrl, newCustomStationId } from '../../core/util.js';
 import { applyLogo } from '../../core/favicon.js';
 import { saveCustomStation, deleteCustomStation, updateCustomStation } from '../../core/db.js';
@@ -18,6 +18,8 @@ import {
 } from './render.js';
 import { exportCurrentStation } from './io.js';
 import { selectStation, playStation } from '../player.js';
+import { showEmpty } from '../../core/placeholders.js';
+import { t } from '../../core/i18n.js';
 
 export async function addCustomStation() {
     const name = dom.customNameInput.value.trim();
@@ -114,7 +116,7 @@ export async function saveEditedStation() {
 
 export function renderCustomStations() {
     if (state.customStations.length === 0) {
-        dom.customStationsList.innerHTML = '<div class="loading-hint">No custom stations</div>';
+        showEmpty(dom.customStationsList, 'No custom stations');
         return;
     }
 
@@ -172,24 +174,24 @@ export function renderCustomStations() {
         }
         favoriteBtn.setAttribute('aria-label',
             isFavorite(station.stationuuid)
-                ? `Remove ${station.name} from favorites`
-                : `Add ${station.name} to favorites`);
+                ? t(`Remove ${station.name} from favorites`)
+                : t(`Add ${station.name} to favorites`));
         favoriteBtn.dataset.action = 'favorite';
 
         // Edit
         const editBtn = document.createElement('button');
         editBtn.className = 'action-btn edit-btn';
-        editBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>`;
-        editBtn.title = 'Edit';
-        editBtn.setAttribute('aria-label', `Edit ${station.name}`);
+        editBtn.innerHTML = EDIT_ICON_SVG;
+        editBtn.title = t('Edit');
+        editBtn.setAttribute('aria-label', t(`Edit ${station.name}`));
         editBtn.dataset.action = 'edit';
 
         // Delete
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'action-btn delete-btn';
-        deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>`;
-        deleteBtn.title = 'Delete';
-        deleteBtn.setAttribute('aria-label', `Delete ${station.name}`);
+        deleteBtn.innerHTML = TRASH_ICON_SVG;
+        deleteBtn.title = t('Delete');
+        deleteBtn.setAttribute('aria-label', t(`Delete ${station.name}`));
         deleteBtn.dataset.action = 'delete';
 
         info.appendChild(nameEl);
@@ -211,7 +213,7 @@ export function updateCurrentStationInfo() {
     if (!dom.currentStationInfo) return;
 
     if (!state.currentStation) {
-        dom.currentStationInfo.innerHTML = '<div class="current-station-empty">No active station</div>';
+        dom.currentStationInfo.innerHTML = `<div class="current-station-empty">${t('No active station')}</div>`;
         return;
     }
 
@@ -239,7 +241,7 @@ export function updateCurrentStationInfo() {
 
     const exportButton = document.createElement('button');
     exportButton.className = 'btn-export';
-    exportButton.textContent = 'Export';
+    exportButton.textContent = t('Export');
     exportButton.addEventListener('click', exportCurrentStation);
 
     form.append(

@@ -8,6 +8,7 @@ import { hasTauriApi, formatTimer } from '../../core/util.js';
 import { applyMarquee, updateInsecureBadge, toast } from '../../ui/ui.js';
 import { showSongNotification, updateMediaSession } from './mediaSession.js';
 import { abortRecording } from './recording.js';
+import { t } from '../../core/i18n.js';
 
 // Display a freshly parsed track title and record it as the current one.
 // state.lastTrackTitle must be updated here rather than as a side effect of
@@ -97,7 +98,7 @@ export async function setupStreamMetadataListener() {
             // The detailed indicator lives in the wide-view transport panel;
             // mirror it on the button title so narrow/mini views see it too.
             if (dom.recStatusText) dom.recStatusText.textContent = text;
-            if (dom.recordBtn) dom.recordBtn.title = `Stop recording — ${text}`;
+            if (dom.recordBtn) dom.recordBtn.title = t(`Stop recording — ${text}`);
         });
     } catch (e) {
         console.error('Failed to set up metadata listener:', e);

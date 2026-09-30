@@ -19,3 +19,6 @@ Thumbs.db
 
 # Local planning notes — kept on disk, not published
 ACTION_PLAN.md
+
+# Local Claude Code settings
+.claude/settings.local.json

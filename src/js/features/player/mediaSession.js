@@ -4,6 +4,7 @@
 import { state } from '../../core/state.js';
 import { resolveLogoSrc } from '../../core/favicon.js';
 import { playStation, stopStation, prevStation, nextStation } from './playback.js';
+import { t } from '../../core/i18n.js';
 
 // Wire OS-level media controls (media keys, lock screen, system widget)
 export function setupMediaSession() {
@@ -28,6 +29,16 @@ export function updateMediaSession(trackTitle) {
     });
 }
 
+// Whether song-change notifications are on. An unset value keeps the old
+// behaviour for existing users: on when the OS permission was already granted.
+export function notificationsEnabled() {
+    const v = state.settings.notifySongs;
+    if (v === true || v === false) return v;
+    return typeof Notification !== 'undefined' && Notification.permission === 'granted';
+}
+
+// Ask the OS for notification permission. Called when the user turns
+// song-change notifications on, not at startup.
 export function requestNotificationPermission() {
     if ('Notification' in window) {
         if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
@@ -40,10 +51,11 @@ export function requestNotificationPermission() {
 // state.lastTrackTitle is owned by showTrackTitle() in metadata.js, which runs
 // regardless of whether notifications are permitted.
 export function showSongNotification(stationName, trackTitle) {
+    if (!notificationsEnabled()) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     if (!trackTitle || trackTitle === state.lastTrackTitle) return;
     new Notification(stationName, {
-        body: `Now playing: ${trackTitle}`,
+        body: `${t('Now playing')}: ${trackTitle}`,
         icon: resolveLogoSrc(state.currentStation),
         silent: true
     });

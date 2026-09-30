@@ -2,8 +2,9 @@
 
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
-import { hasTauriApi, sanitizeFilename, recordingExtension } from '../../core/util.js';
+import { hasTauriApi, sanitizeFilename, recordingExtension, joinPath } from '../../core/util.js';
 import { toast } from '../../ui/ui.js';
+import { t } from '../../core/i18n.js';
 
 export async function toggleRecording() {
     if (!hasTauriApi) {
@@ -30,10 +31,17 @@ export async function startRecording() {
     const defaultName = `${sanitizeFilename(state.currentStation.name)}_${stamp}.${ext}`;
 
     try {
-        const path = await save({
-            defaultPath: defaultName,
-            filters: [{ name: 'Audio', extensions: [ext] }]
-        });
+        let path;
+        const dir = state.settings.recordDir;
+        if (dir && state.settings.recordAskPath === false) {
+            // One-click recording into the chosen folder, no dialog.
+            path = joinPath(dir, defaultName);
+        } else {
+            path = await save({
+                defaultPath: dir ? joinPath(dir, defaultName) : defaultName,
+                filters: [{ name: 'Audio', extensions: [ext] }]
+            });
+        }
         if (!path) return;
 
         const url = state.currentStation.url_resolved || state.currentStation.url;
@@ -81,7 +89,7 @@ function clearRecordingUi() {
 function updateRecordButton() {
     if (!dom.recordBtn) return;
     dom.recordBtn.classList.toggle('recording', state.isRecording);
-    dom.recordBtn.title = state.isRecording ? 'Stop recording' : 'Record stream';
+    dom.recordBtn.title = t(state.isRecording ? 'Stop recording' : 'Record stream');
     dom.recordBtn.setAttribute('aria-label', dom.recordBtn.title);
     dom.recordBtn.setAttribute('aria-pressed', String(state.isRecording));
 }

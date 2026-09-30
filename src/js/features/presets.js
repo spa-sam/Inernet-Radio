@@ -8,6 +8,7 @@ import { state } from '../core/state.js';
 import { dom } from '../core/dom.js';
 import { saveSetting } from '../core/db.js';
 import { DEFAULT_GENRE_PRESETS } from '../core/constants.js';
+import { t } from '../core/i18n.js';
 
 // Reserved genres that belong to the fixed source chips, not user genres.
 const RESERVED = ['favorites', 'somafm', 'm3u'];
@@ -45,7 +46,7 @@ export function renderGenrePresets() {
         const del = document.createElement('span');
         del.className = 'preset-del';
         del.textContent = '✕';
-        del.title = 'Remove genre';
+        del.title = t('Remove genre');
         btn.appendChild(del);
 
         host.appendChild(btn);

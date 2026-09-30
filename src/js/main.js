@@ -7,6 +7,7 @@ import { state } from './core/state.js';
 import { dom } from './core/dom.js';
 import { SOURCES } from './core/constants.js';
 import { hasTauriApi } from './core/util.js';
+import { t, setLanguage, applyTranslations, LANGUAGES } from './core/i18n.js';
 import { applyLogo, resolveLogoSrc, initFaviconCache } from './core/favicon.js';
 import { loadApiServers, loadFilterOptions } from './services/api.js';
 import {
@@ -17,7 +18,7 @@ import {
     applySavedOrder
 } from './core/db.js';
 import { buildEqUi, toggleEq, applyEqPreset, toggleNormalization } from './services/audio.js';
-import { toggleVisualizer, changeVisualizerColor, cycleVisualizerStyle, refreshVisualizerSize } from './services/visualizer.js';
+import { toggleVisualizer, changeVisualizerColor, cycleVisualizerStyle, refreshVisualizerSize, setupVisualizerVisibility } from './services/visualizer.js';
 import {
     initProxy,
     setVolume,
@@ -30,9 +31,10 @@ import {
     toggleRecording,
     setupMediaSession,
     setupStreamMetadataListener,
-    requestNotificationPermission,
     handleStreamDrop,
-    setConnectionState
+    setConnectionState,
+    setupBufferingIndicator,
+    updatePlayButton
 } from './features/player.js';
 import {
     searchStations,
@@ -48,7 +50,8 @@ import {
     clearTrackHistory,
     updateCurrentStationInfo,
     exportFavorites,
-    importStations
+    importStations,
+    importStationFile
 } from './features/stations.js';
 import {
     renderGenrePresets,
@@ -65,6 +68,18 @@ import {
     checkConnectivity
 } from './features/sources.js';
 import { setupSearchDropdown } from './features/searchDropdown.js';
+import { setupShortcuts } from './features/shortcuts.js';
+import {
+    initAppSettings,
+    toggleCloseToTray,
+    toggleAutostart,
+    toggleNotifySongs,
+    toggleRecordAskPath,
+    chooseRecordDir
+} from './features/appSettings.js';
+import { exportBackup, importBackupFile } from './features/backup.js';
+import { isBackup } from './core/backupFormat.js';
+import { applyTheme, applyAccent, setTheme, setAccent, watchSystemTheme, DEFAULT_ACCENT } from './ui/theme.js';
 import {
     setStationName,
     updateMetadata,
@@ -125,6 +140,14 @@ async function initDatabase() {
     state.customStations = applySavedOrder(state.customStations, state.settings.customOrder);
 }
 
+// The "Choose a radio station" headline is user-data territory once a station is
+// selected, so it is translated here rather than by the DOM walker.
+function setStationPlaceholder() {
+    if (!state.lastStation && !state.currentStation) {
+        dom.stationName.textContent = t('Choose a radio station');
+    }
+}
+
 // Initialize
 async function init() {
     // Start silent until the persisted level is restored below.
@@ -149,8 +172,21 @@ async function init() {
     // so known-bad favicons are not re-requested on the first paint.
     await initFaviconCache();
 
-    // Request notification permission
-    requestNotificationPermission();
+    // Language, theme and accent first, so nothing renders in the wrong look
+    setLanguage(state.settings.language);
+    applyTheme();
+    applyAccent();
+    watchSystemTheme();
+    applyTranslations();
+    setStationPlaceholder();
+    dom.themeSelect.value = state.settings.theme;
+    dom.accentColorPicker.value = state.settings.accent || DEFAULT_ACCENT;
+    dom.languageSelect.value = LANGUAGES.includes(state.settings.language) ? state.settings.language : 'auto';
+
+    // Desktop-app behaviour (tray, autostart, notifications, recordings folder)
+    initAppSettings();
+    setupBufferingIndicator();
+    setupVisualizerVisibility();
 
     // Wire OS-level media controls once
     setupMediaSession();
@@ -252,7 +288,7 @@ dom.searchBtn.addEventListener('click', () => {
     searchStations(dom.searchInput.value.trim());
 });
 
-dom.searchInput.addEventListener('keypress', (e) => {
+dom.searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         clearTimeout(state.searchDebounce);
         searchStations(dom.searchInput.value.trim());
@@ -468,7 +504,7 @@ function submitAddPreset() {
 }
 if (dom.presetAddBtn) dom.presetAddBtn.addEventListener('click', submitAddPreset);
 if (dom.presetAddInput) {
-    dom.presetAddInput.addEventListener('keypress', (e) => {
+    dom.presetAddInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') submitAddPreset();
     });
 }
@@ -578,12 +614,12 @@ if (hasTauriApi && window.__TAURI__.event && dom.updateActionBtn) {
 
     const setUpdStatus = (text, kind = '') => {
         if (!dom.updateStatus) return;
-        dom.updateStatus.textContent = text || '';
+        dom.updateStatus.textContent = t(text || '');
         dom.updateStatus.className = 'update-status' + (kind ? ' ' + kind : '');
     };
     const fmtMB = (b) => (b / (1024 * 1024)).toFixed(1);
     const setBtn = (label, accent) => {
-        dom.updateActionBtn.textContent = label;
+        dom.updateActionBtn.textContent = t(label);
         dom.updateActionBtn.classList.toggle('accent', !!accent);
     };
 
@@ -715,20 +751,100 @@ dom.visualizerSensitivityInput.addEventListener('input', () => {
     saveSetting('visualizerSensitivity', state.settings.visualizerSensitivity);
 });
 
-// Keyboard shortcuts: Space toggles play/stop. Skipped while a field is being
-// typed in, and while any control that already answers to Space has focus —
-// otherwise tabbing to a button and pressing Space both activated it and
-// toggled playback.
-document.addEventListener('keydown', (e) => {
-    const el = e.target;
-    if (el.isContentEditable) return;
-    if (el.closest && el.closest('input, select, textarea, button, a, [role="button"]')) return;
+// Keyboard shortcuts (Space, volume, mute, next/prev, favourite, search) and
+// the tray-menu actions. See features/shortcuts.js.
+setupShortcuts();
 
-    if (e.key === ' ') {
-        e.preventDefault();
-        togglePlay();
-    }
+// Appearance
+dom.themeSelect.addEventListener('change', () => setTheme(dom.themeSelect.value));
+dom.accentColorPicker.addEventListener('input', () => setAccent(dom.accentColorPicker.value));
+dom.accentResetBtn.addEventListener('click', () => {
+    setAccent(DEFAULT_ACCENT);
+    dom.accentColorPicker.value = DEFAULT_ACCENT;
 });
+dom.languageSelect.addEventListener('change', () => {
+    state.settings.language = dom.languageSelect.value;
+    saveSetting('language', state.settings.language);
+    setLanguage(state.settings.language);
+    applyTranslations();
+    setStationPlaceholder();
+    // Re-render what JS built, so it picks up the new language too
+    renderCustomStations();
+    renderRecentlyPlayed();
+    renderTrackHistory();
+    renderBlacklist();
+    updateCurrentStationInfo();
+    updateBrandStatus();
+    updatePlayButton();
+});
+
+// Application behaviour
+dom.closeToTrayCheckbox.addEventListener('change', toggleCloseToTray);
+dom.autostartCheckbox.addEventListener('change', toggleAutostart);
+dom.notifySongsCheckbox.addEventListener('change', toggleNotifySongs);
+dom.recordAskPathCheckbox.addEventListener('change', toggleRecordAskPath);
+dom.recordDirBtn.addEventListener('click', chooseRecordDir);
+
+// Backup
+dom.backupExportBtn.addEventListener('click', exportBackup);
+dom.backupImportBtn.addEventListener('click', () => dom.backupFile.click());
+dom.backupFile.addEventListener('change', () => {
+    importBackupFile(dom.backupFile.files[0]);
+    dom.backupFile.value = '';
+});
+
+// Reset all search filters
+dom.filterResetBtn.addEventListener('click', () => {
+    dom.filterCountry.value = '';
+    dom.filterTag.value = '';
+    dom.filterBitrate.value = '0';
+    dom.filterCodec.value = '';
+    dom.filterLanguage.value = '';
+    dom.filterOrder.value = 'clickcount';
+    searchStations(dom.searchInput.value.trim());
+});
+
+// Drag a station file (.m3u / .pls / .opml / .json) or a backup onto the window
+{
+    const overlay = document.createElement('div');
+    overlay.className = 'drop-overlay hidden';
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.textContent = t('Drop a file to import stations');
+    document.body.appendChild(overlay);
+    let depth = 0;
+    const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+    window.addEventListener('dragenter', (e) => {
+        if (!hasFiles(e)) return;
+        depth++;
+        overlay.textContent = t('Drop a file to import stations');
+        overlay.classList.remove('hidden');
+    });
+    window.addEventListener('dragleave', (e) => {
+        if (!hasFiles(e)) return;
+        depth = Math.max(0, depth - 1);
+        if (depth === 0) overlay.classList.add('hidden');
+    });
+    window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+    window.addEventListener('drop', async (e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        depth = 0;
+        overlay.classList.add('hidden');
+        const file = e.dataTransfer.files[0];
+        if (!file) return;
+        // A backup is a JSON object; a station export is a JSON array.
+        if (/\.json$/i.test(file.name)) {
+            try {
+                const parsed = JSON.parse(await file.text());
+                if (isBackup(parsed)) {
+                    importBackupFile(file);
+                    return;
+                }
+            } catch { /* fall through to the station importer, which reports it */ }
+        }
+        importStationFile(file);
+    });
+}
 
 // Initialize and load. A failure here (DB open, proxy handshake, …) would
 // otherwise vanish into an unhandled rejection, so surface it.

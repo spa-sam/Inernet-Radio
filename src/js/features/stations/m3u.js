@@ -8,6 +8,7 @@ import { loadCache, saveCache } from '../../core/db.js';
 import { getProxiedUrl } from '../player.js';
 import { parseM3U } from './io.js';
 import { renderStations } from './render.js';
+import { showEmpty, showLoading } from '../../core/placeholders.js';
 
 // Return the genre list. Served from the cached copy in settings unless it is
 // missing, stale (older than the TTL) or a refresh is forced. A live fetch hits
@@ -73,11 +74,11 @@ export async function fetchM3UStations(rawUrl, limit = 500) {
 
 export async function loadM3URadio(rawUrl) {
     state.searchPage.active = false;
-    dom.stationsList.innerHTML = '<div class="loading">Loading playlist…</div>';
+    showLoading(dom.stationsList, 'Loading playlist…');
     try {
         const stations = await fetchM3UStations(rawUrl);
         if (stations.length === 0) {
-            dom.stationsList.innerHTML = '<div class="loading-hint">Playlist is empty</div>';
+            showEmpty(dom.stationsList, 'Playlist is empty');
             state.currentStationsList = [];
             return;
         }
@@ -85,6 +86,6 @@ export async function loadM3URadio(rawUrl) {
         renderStations(stations);
     } catch (error) {
         console.error('M3U load error:', error);
-        dom.stationsList.innerHTML = '<div class="loading-hint">Failed to load playlist</div>';
+        showEmpty(dom.stationsList, 'Failed to load playlist');
     }
 }

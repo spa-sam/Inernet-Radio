@@ -106,3 +106,9 @@ export function adjustBrightness(hexColor, factor) {
 
     return `rgb(${newR}, ${newG}, ${newB})`;
 }
+
+// Join a folder and a file name with the separator the folder already uses.
+export function joinPath(dir, name) {
+    const sep = dir.includes('\\') && !dir.includes('/') ? '\\' : '/';
+    return dir.replace(/[\\/]+$/, '') + sep + name;
+}
