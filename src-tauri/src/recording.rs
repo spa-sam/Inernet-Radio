@@ -42,6 +42,29 @@ pub(crate) struct RecordingState {
     stop: Mutex<Option<Arc<AtomicBool>>>,
 }
 
+// File extensions a recording may be written to. The frontend picks one from
+// the codec; anything else (.exe, .lnk, .bat, a startup script …) is refused so
+// a compromised webview cannot use "record" as an arbitrary-file-write
+// primitive with attacker-chosen stream bytes.
+const RECORDING_EXTENSIONS: [&str; 4] = ["mp3", "aac", "ogg", "flac"];
+
+fn validate_record_path(path: &str) -> Result<(), String> {
+    let p = std::path::Path::new(path);
+    if !p.is_absolute() {
+        return Err("recording path must be absolute".into());
+    }
+    let ok = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| RECORDING_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+        .unwrap_or(false);
+    if ok {
+        Ok(())
+    } else {
+        Err("recordings must use an audio file extension (mp3, aac, ogg, flac)".into())
+    }
+}
+
 // Replace characters that are invalid in file names (Windows-safe) and clamp
 // the length so a long track title cannot produce an unusable path.
 fn sanitize_filename(name: &str) -> String {
@@ -241,6 +264,7 @@ pub(crate) fn start_recording(
     path: String,
     split: bool,
 ) -> Result<(), String> {
+    validate_record_path(&path)?;
     let mut guard = state.stop.lock().map_err(|_| "lock poisoned")?;
     if let Some(flag) = guard.as_ref() {
         if !flag.load(Ordering::Relaxed) {
@@ -278,6 +302,20 @@ pub(crate) fn is_recording(state: tauri::State<'_, RecordingState>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn record_path_needs_an_absolute_audio_path() {
+        #[cfg(windows)]
+        let (abs, other) = ("C:\\rec\\a.mp3", "C:\\rec\\a.exe");
+        #[cfg(not(windows))]
+        let (abs, other) = ("/tmp/rec/a.mp3", "/tmp/rec/a.exe");
+        assert!(validate_record_path(abs).is_ok());
+        assert!(validate_record_path(&abs.to_uppercase()).is_ok());
+        assert!(validate_record_path(other).is_err());
+        assert!(validate_record_path("a.mp3").is_err());
+        assert!(validate_record_path("../a.mp3").is_err());
+        assert!(validate_record_path("").is_err());
+    }
 
     #[test]
     fn sanitize_filename_strips_invalid_chars() {

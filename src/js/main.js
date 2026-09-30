@@ -8,7 +8,7 @@ import { dom } from './core/dom.js';
 import { SOURCES } from './core/constants.js';
 import { hasTauriApi } from './core/util.js';
 import { t, setLanguage, applyTranslations, LANGUAGES } from './core/i18n.js';
-import { applyLogo, resolveLogoSrc, initFaviconCache } from './core/favicon.js';
+import { applyLogo, resolveLogoSrc, cssUrl, initFaviconCache } from './core/favicon.js';
 import { loadApiServers, loadFilterOptions } from './services/api.js';
 import {
     openDatabase,
@@ -249,7 +249,7 @@ async function init() {
         updateCurrentStationInfo();
         dom.stationLogo.classList.remove('hidden');
         applyLogo(dom.stationLogo, state.lastStation);
-        if (dom.trackCardThumb) dom.trackCardThumb.style.backgroundImage = `url("${resolveLogoSrc(state.lastStation)}")`;
+        if (dom.trackCardThumb) dom.trackCardThumb.style.backgroundImage = cssUrl(resolveLogoSrc(state.lastStation));
     }
 
     // Load custom stations

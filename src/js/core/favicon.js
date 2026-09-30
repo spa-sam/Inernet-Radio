@@ -45,6 +45,13 @@ export function isFaviconUsable(url) {
 
 // Best logo source for a station without triggering a network attempt for a
 // known-bad favicon. Used where onerror cannot apply (e.g. CSS background).
+// Wrap a URL for a CSS background-image. URLs here come from the station
+// database, so anything that could close the string or the url() is percent-
+// encoded rather than trusted.
+export function cssUrl(src) {
+    return `url("${String(src).replace(/["'()\\\s]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'))}")`;
+}
+
 export function resolveLogoSrc(station) {
     if (station && isFaviconUsable(station.favicon)) return station.favicon;
     return generatePlaceholderLogo(station ? station.name : '');

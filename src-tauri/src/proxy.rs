@@ -5,7 +5,7 @@
 use serde::Serialize;
 use std::time::Duration;
 use tauri::Emitter;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
@@ -77,6 +77,64 @@ fn random_token() -> String {
     let mut bytes = [0u8; 16];
     getrandom::fill(&mut bytes).expect("OS random source unavailable");
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+// Longest HTTP status / header line accepted from an upstream (or from the
+// local client), and the most header lines. `read_line` alone has no bound, so
+// a hostile server could stream an endless "header" and grow memory until the
+// handshake timeout fires.
+const MAX_HEADER_LINE: usize = 16 * 1024;
+const MAX_HEADER_LINES: usize = 100;
+
+// read_line with an upper bound on the line length.
+async fn read_line_limited<R>(reader: &mut R, buf: &mut String) -> std::io::Result<usize>
+where
+    R: AsyncBufRead + Unpin,
+{
+    let n = (&mut *reader)
+        .take(MAX_HEADER_LINE as u64)
+        .read_line(buf)
+        .await?;
+    if n >= MAX_HEADER_LINE && !buf.ends_with('\n') {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "header line too long",
+        ));
+    }
+    Ok(n)
+}
+
+// Whether `host` is an address a *redirect* (or a playlist entry) must not lead
+// to: loopback, unspecified, link-local (which includes the 169.254.169.254
+// cloud-metadata address) and IPv6 equivalents. A station URL the user chose
+// may well be on their LAN, but a remote server bouncing us to a local service
+// is an SSRF attempt. Hostnames whose last label is not alphabetic are also
+// refused: the system resolver reads `2130706433` or `0x7f.1` as 127.0.0.1.
+fn is_forbidden_redirect_host(host: &str) -> bool {
+    use std::net::IpAddr;
+    let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    if host.is_empty() || host.starts_with('[') {
+        return true;
+    }
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return match ip {
+            IpAddr::V4(v4) => {
+                v4.is_loopback() || v4.is_unspecified() || v4.is_link_local() || v4.is_broadcast()
+            }
+            IpAddr::V6(v6) => {
+                v6.is_loopback() || v6.is_unspecified() || (v6.segments()[0] & 0xffc0) == 0xfe80
+            }
+        };
+    }
+    if host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    // A real hostname ends in a label with at least one letter ("com", "fm").
+    !host
+        .rsplit('.')
+        .next()
+        .map(|last| last.chars().any(|c| c.is_ascii_alphabetic()))
+        .unwrap_or(false)
 }
 
 // A boxed async stream — either a plain TCP or a TLS connection.
@@ -240,6 +298,11 @@ pub(crate) async fn open_audio_stream(
     }
 
     let (host, port, path, is_ssl) = parse_url(url).ok_or("invalid url")?;
+    // The first hop is the station URL the user chose (LAN streams are fine);
+    // every later hop was handed to us by a remote server.
+    if hops > 0 && is_forbidden_redirect_host(&host) {
+        return Err("redirect to a local address is not allowed".into());
+    }
     let addr = format!("{}:{}", host, port);
 
     // `insecure` is set when this hop's TLS handshake skipped cert validation;
@@ -282,15 +345,15 @@ pub(crate) async fn open_audio_stream(
     // Read the status line and headers, bounded by a timeout
     let (status, content_type, location, metaint) = timeout(Duration::from_secs(8), async {
         let mut status_line = String::new();
-        reader.read_line(&mut status_line).await?;
+        read_line_limited(&mut reader, &mut status_line).await?;
         let status = parse_status_code(&status_line);
 
         let mut content_type = String::new();
         let mut location = String::new();
         let mut metaint: Option<usize> = None;
-        loop {
+        for _ in 0..MAX_HEADER_LINES {
             let mut line = String::new();
-            if reader.read_line(&mut line).await? == 0 {
+            if read_line_limited(&mut reader, &mut line).await? == 0 {
                 break;
             }
             let trimmed = line.trim();
@@ -820,7 +883,7 @@ async fn handle_proxy_client(
     let mut request_line = String::new();
     {
         let mut reader = BufReader::new(&mut client_stream);
-        if let Err(e) = reader.read_line(&mut request_line).await {
+        if let Err(e) = read_line_limited(&mut reader, &mut request_line).await {
             return if is_disconnect(&e) {
                 Ok(())
             } else {
@@ -1040,6 +1103,62 @@ mod tests {
         assert_eq!(a.len(), 32);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn redirects_to_local_addresses_are_refused() {
+        for host in [
+            "127.0.0.1",
+            "127.1.2.3",
+            "0.0.0.0",
+            "169.254.169.254",
+            "localhost",
+            "LOCALHOST.",
+            "radio.localhost",
+            "::1",
+            "[::1]",
+            "fe80::1",
+            "2130706433",
+            "0x7f.0.0.1",
+            "",
+        ] {
+            assert!(is_forbidden_redirect_host(host), "{host} should be refused");
+        }
+    }
+
+    #[test]
+    fn redirects_to_public_and_lan_hosts_are_allowed() {
+        for host in [
+            "stream.example.com",
+            "radio.fm",
+            "8.8.8.8",
+            "192.168.1.20",
+            "10.0.0.5",
+        ] {
+            assert!(
+                !is_forbidden_redirect_host(host),
+                "{host} should be allowed"
+            );
+        }
+    }
+
+    #[test]
+    fn header_lines_are_length_bounded() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let long = vec![b'a'; MAX_HEADER_LINE * 2];
+            let mut reader = BufReader::new(&long[..]);
+            let mut line = String::new();
+            let err = read_line_limited(&mut reader, &mut line).await.unwrap_err();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+
+            let mut ok = BufReader::new(&b"HTTP/1.0 200 OK\r\nrest"[..]);
+            let mut line = String::new();
+            assert_eq!(read_line_limited(&mut ok, &mut line).await.unwrap(), 17);
+            assert_eq!(line, "HTTP/1.0 200 OK\r\n");
+        });
     }
 
     #[test]

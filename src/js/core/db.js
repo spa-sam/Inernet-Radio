@@ -4,6 +4,10 @@
 
 import { EQ_BANDS } from './constants.js';
 
+// Property names that must never become a settings key: assigning one to a plain
+// object would rewrite its prototype.
+const UNSAFE_SETTING_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 // Bulky, regenerable data (source catalogues, negative favicon cache) lives in
 // its own `caches` table rather than in `settings`. Settings are all read at
 // startup, so keeping multi-megabyte catalogues there meant parsing them on
@@ -217,7 +221,7 @@ export async function loadAllDataFromDb() {
                 if (Array.isArray(value) && value.length === EQ_BANDS.length) {
                     result.settings.eqGains = value;
                 }
-            } else if (!CACHE_KEYS.includes(row.key)) {
+            } else if (!CACHE_KEYS.includes(row.key) && !UNSAFE_SETTING_KEYS.has(row.key)) {
                 result.settings[row.key] = value;
             }
         });
