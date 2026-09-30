@@ -2068,7 +2068,7 @@ dependencies = [
 
 [[package]]
 name = "internet-radio"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "getrandom 0.4.2",
  "native-tls",
