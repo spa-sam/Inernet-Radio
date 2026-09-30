@@ -4,6 +4,7 @@
 
 - **Language:** Russian removed; Ukrainian added (Settings → Interface language).
 - **Security:** the proxy refuses redirects to local/link-local addresses and bounds HTTP header size; recordings are limited to absolute audio-file paths; backup restore only applies known settings and never machine-specific ones; imported logo URLs are validated; stricter CSP; `rustls` updated.
+- **Dependencies:** Tauri plugins updated (dialog 2.8, fs 2.6, sql 2.5, window-state 2.5), plus `serde`, `serde_json` and `getrandom`.
 
 ## 1.1.0
 
