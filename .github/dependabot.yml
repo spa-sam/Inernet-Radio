@@ -1,14 +1,28 @@
+# One grouped PR per ecosystem per week, instead of one PR per dependency.
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /src-tauri
     schedule:
       interval: weekly
+    groups:
+      rust:
+        patterns: ["*"]
+    ignore:
+      # 0.6 changed the decoder API used by the macOS PCM path (proxy.rs).
+      - dependency-name: symphonia
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
