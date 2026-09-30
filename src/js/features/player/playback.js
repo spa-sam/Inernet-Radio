@@ -4,7 +4,7 @@
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 import { getFaviconFromUrl, formatTimer, isWebKit } from '../../core/util.js';
-import { applyLogo, resolveLogoSrc } from '../../core/favicon.js';
+import { applyLogo, resolveLogoSrc, cssUrl } from '../../core/favicon.js';
 import { saveSetting } from '../../core/db.js';
 import { apiFetch } from '../../services/api.js';
 import {
@@ -396,7 +396,7 @@ export function selectStation(station, itemElement) {
 
     dom.stationLogo.classList.remove('hidden');
     applyLogo(dom.stationLogo, station);
-    if (dom.trackCardThumb) dom.trackCardThumb.style.backgroundImage = `url("${resolveLogoSrc(station)}")`;
+    if (dom.trackCardThumb) dom.trackCardThumb.style.backgroundImage = cssUrl(resolveLogoSrc(station));
 
     document.querySelectorAll('.station-item').forEach(item => {
         item.classList.remove('active');

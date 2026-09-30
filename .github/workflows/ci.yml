@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, master]
 
+# Read-only token: CI only checks out and builds.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 

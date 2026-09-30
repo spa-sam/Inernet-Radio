@@ -7,7 +7,7 @@ import { state } from '../core/state.js';
 import { saveSetting, saveFavoritesBatch, saveCustomBatch, saveBlacklist, saveTrackHistoryEntry } from '../core/db.js';
 import { toast } from '../ui/ui.js';
 import { exportToJson } from './stations/io.js';
-import { isBackup, mergeStations, buildBackup, SKIP_SETTINGS } from '../core/backupFormat.js';
+import { isBackup, mergeStations, buildBackup, restorableSettings } from '../core/backupFormat.js';
 
 export async function exportBackup() {
     try {
@@ -45,9 +45,7 @@ export async function restoreBackup(data) {
             await saveTrackHistoryEntry(entry, state.trackHistory);
         }
 
-        const settings = data.settings && typeof data.settings === 'object' ? data.settings : {};
-        for (const [key, value] of Object.entries(settings)) {
-            if (SKIP_SETTINGS.has(key) || value === undefined) continue;
+        for (const [key, value] of Object.entries(restorableSettings(data.settings, state.settings))) {
             await saveSetting(key, value);
         }
         toast('Backup restored', 'success');

@@ -113,7 +113,7 @@ export const state = {
         recordDir: '',
         theme: 'dark',        // 'system' | 'dark' | 'light'
         accent: '#ff5a36',
-        language: 'auto',     // 'auto' | 'en' | 'ru'
+        language: 'auto',     // 'auto' | 'en' | 'uk'
         closeToTray: false,
         notifySongs: null,    // null = follow the OS permission (legacy behaviour)
         alarmEnabled: false,

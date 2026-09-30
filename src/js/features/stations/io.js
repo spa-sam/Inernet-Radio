@@ -7,6 +7,7 @@ import { saveCustomBatch, saveFavoritesBatch } from '../../core/db.js';
 import { parseM3U, parsePLS } from '../../core/playlist.js';
 import { toast } from '../../ui/ui.js';
 import { renderCustomStations } from './custom.js';
+import { cleanStation } from '../../core/backupFormat.js';
 
 // Re-exported so existing importers (stations/m3u.js) keep their entry point.
 export { parseM3U };
@@ -116,8 +117,9 @@ async function importStationsJson(text) {
 
     if (isCustom) {
         const added = [];
-        for (const station of data) {
-            if (!validUrl(station)) continue;
+        for (const raw of data) {
+            if (!validUrl(raw)) continue;
+            const station = cleanStation(raw);
             if (!state.customStations.some(s => s.stationuuid === station.stationuuid)) {
                 state.customStations.push(station);
                 added.push(station);
@@ -128,8 +130,9 @@ async function importStationsJson(text) {
         toast('Custom stations imported', 'success');
     } else {
         const added = [];
-        for (const station of data) {
-            if (!validUrl(station)) continue;
+        for (const raw of data) {
+            if (!validUrl(raw)) continue;
+            const station = cleanStation(raw);
             if (!state.favorites.some(f => f.stationuuid === station.stationuuid)) {
                 state.favorites.push(station);
                 added.push(station);

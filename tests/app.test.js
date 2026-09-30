@@ -22,33 +22,35 @@ test('English returns text untouched', () => {
     assert.equal(i18n.t('Hid Jazz FM'), 'Hid Jazz FM');
 });
 
-test('Russian translates exact keys and falls back to English for unknown text', () => {
-    i18n.setLanguage('ru');
-    assert.equal(i18n.t('Play'), 'Играть');
+test('Ukrainian translates exact keys and falls back to English for unknown text', () => {
+    i18n.setLanguage('uk');
+    assert.equal(i18n.t('Play'), 'Грати');
     assert.equal(i18n.t('Some station name'), 'Some station name');
     i18n.setLanguage('en');
 });
 
-test('Russian patterns substitute captured text, in order', () => {
-    i18n.setLanguage('ru');
-    assert.equal(i18n.t('Hid Jazz FM'), 'Скрыто: Jazz FM');
+test('Ukrainian patterns substitute captured text, in order', () => {
+    i18n.setLanguage('uk');
+    assert.equal(i18n.t('Hid Jazz FM'), 'Сховано: Jazz FM');
     assert.equal(i18n.t('Update available: v1.2.0 (current v1.1.0)'),
-        'Доступно обновление: v1.2.0 (сейчас v1.1.0)');
-    assert.equal(i18n.t('Remove Rock.FM (HD) from favorites'), 'Убрать «Rock.FM (HD)» из избранного');
+        'Доступне оновлення: v1.2.0 (зараз v1.1.0)');
+    assert.equal(i18n.t('Remove Rock.FM (HD) from favorites'), 'Прибрати «Rock.FM (HD)» з обраного');
     i18n.setLanguage('en');
 });
 
 test('resolveLanguage honours an explicit choice and otherwise follows the system', () => {
     assert.equal(i18n.resolveLanguage('en'), 'en');
-    assert.equal(i18n.resolveLanguage('ru'), 'ru');
-    assert.ok(['en', 'ru'].includes(i18n.resolveLanguage('auto')));
-    assert.ok(['en', 'ru'].includes(i18n.resolveLanguage('klingon')));
+    assert.equal(i18n.resolveLanguage('uk'), 'uk');
+    assert.ok(['en', 'uk'].includes(i18n.resolveLanguage('auto')));
+    // Russian is not offered: a stale saved 'ru' is treated as "auto"
+    assert.notEqual(i18n.resolveLanguage('ru'), 'ru');
+    assert.ok(['en', 'uk'].includes(i18n.resolveLanguage('ru')));
 });
 
-test('every Russian entry keeps the same number of {} slots as its key', () => {
+test('every Ukrainian entry keeps the same number of {} slots as its key', () => {
     // Indirect check: translating a key built from filler text must not leave
     // a stray "{}" behind.
-    i18n.setLanguage('ru');
+    i18n.setLanguage('uk');
     for (const sample of ['Hid x', 'Sleep timer: 15 min', 'Alarm set for 07:00', 'Stop recording — REC 00:01']) {
         assert.ok(!i18n.t(sample).includes('{}'), sample);
     }
@@ -146,6 +148,46 @@ test('buildBackup captures every collection and the settings', () => {
     assert.equal(b.settings.volume, 40);
     assert.equal(b.favorites.length, 1);
     assert.ok(!Number.isNaN(Date.parse(b.exportedAt)));
+});
+
+test('restorableSettings keeps only known keys of the right type', () => {
+    const defaults = { volume: 70, theme: 'dark', eqGains: [0], genrePresets: null, sources: { a: true } };
+    const out = backup.restorableSettings({
+        volume: 40, theme: 5, eqGains: 'x', genrePresets: [{ genre: 'rock' }],
+        sources: { a: false }, evil: 1, recordDir: '/etc', closeToTray: true
+    }, defaults);
+    assert.deepEqual(out, { volume: 40, genrePresets: [{ genre: 'rock' }], sources: { a: false } });
+});
+
+test('restorableSettings never restores machine-specific or prototype keys', () => {
+    const defaults = { recordDir: '', recordAskPath: true, closeToTray: false, compactMode: false, ['__proto__x']: 1 };
+    const incoming = JSON.parse('{"recordDir":"/x","recordAskPath":false,"closeToTray":true,"compactMode":true,"__proto__":{"polluted":1}}');
+    const out = backup.restorableSettings(incoming, defaults);
+    assert.deepEqual(out, {});
+    assert.equal({}.polluted, undefined);
+    assert.deepEqual(backup.restorableSettings(null, defaults), {});
+});
+
+test('safeFavicon accepts plain http(s) URLs only', () => {
+    assert.equal(backup.safeFavicon('https://x.fm/logo.png'), 'https://x.fm/logo.png');
+    assert.equal(backup.safeFavicon('javascript:alert(1)'), '');
+    assert.equal(backup.safeFavicon('file:///etc/passwd'), '');
+    assert.equal(backup.safeFavicon('https://x.fm/a") , url("https://evil'), '');
+    assert.equal(backup.safeFavicon(42), '');
+});
+
+test('mergeStations cleans the favicon of imported stations', () => {
+    const existing = [];
+    backup.mergeStations(existing, [{ stationuuid: 'a', name: 'A', url: 'https://x/s', favicon: "javascript:1" }]);
+    assert.equal(existing[0].favicon, '');
+});
+
+test('cssUrl percent-encodes anything that could break out of url("")', async () => {
+    const { cssUrl } = await import('../src/js/core/favicon.js');
+    const css = cssUrl('https://x/a") , url("https://evil/b c');
+    assert.ok(css.startsWith('url("') && css.endsWith('")'));
+    const inner = css.slice(5, -2);
+    assert.ok(!/["'() ]/.test(inner), inner);
 });
 
 // --- paths -------------------------------------------------------------------
