@@ -4,6 +4,8 @@ import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 import { saveTrackHistoryEntry, clearTrackHistoryStore } from '../../core/db.js';
 import { openYouTubeSearch, toast } from '../../ui/ui.js';
+import { YOUTUBE_ICON_SVG } from '../../core/icons.js';
+import { t } from '../../core/i18n.js';
 
 export async function addToTrackHistory(title, station) {
     if (!title) return;
@@ -30,7 +32,7 @@ export function renderTrackHistory() {
         dom.trackHistoryList.replaceChildren();
         const hint = document.createElement('div');
         hint.className = 'loading-hint';
-        hint.textContent = 'History is empty';
+        hint.textContent = t('History is empty');
         dom.trackHistoryList.appendChild(hint);
         return;
     }
@@ -58,9 +60,9 @@ export function renderTrackHistory() {
 
         const ytBtn = document.createElement('button');
         ytBtn.className = 'action-btn track-history-yt';
-        ytBtn.title = 'Find on YouTube';
-        ytBtn.setAttribute('aria-label', `Find "${entry.title}" on YouTube`);
-        ytBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31.3 31.3 0 0 0 0 12a31.3 31.3 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31.3 31.3 0 0 0 24 12a31.3 31.3 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6z" fill="currentColor"/></svg>`;
+        ytBtn.title = t('Find on YouTube');
+        ytBtn.setAttribute('aria-label', t(`Find "${entry.title}" on YouTube`));
+        ytBtn.innerHTML = YOUTUBE_ICON_SVG;
         ytBtn.addEventListener('click', () => openYouTubeSearch(entry.title));
 
         item.append(info, ytBtn);

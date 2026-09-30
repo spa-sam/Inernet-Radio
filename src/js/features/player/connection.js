@@ -8,6 +8,7 @@ import {
 import { applyMarquee } from '../../ui/ui.js';
 import { stopVisualization } from '../../services/visualizer.js';
 import { updatePlayButton, playStation } from './playback.js';
+import { t } from '../../core/i18n.js';
 
 // Show connection / playback status in the now-playing line
 // How many reconnects to attempt before giving up, based on whether this
@@ -19,17 +20,17 @@ function reconnectBudget() {
 export function setConnectionState(phase) {
     dom.nowPlayingTrack.classList.remove('status-line', 'status-error');
     if (phase === 'connecting') {
-        dom.nowPlayingTrack.textContent = '⏳ Connecting…';
+        dom.nowPlayingTrack.textContent = t('⏳ Connecting…');
         dom.nowPlayingTrack.classList.add('status-line');
     } else if (phase === 'buffering') {
-        dom.nowPlayingTrack.textContent = '⏳ Buffering…';
+        dom.nowPlayingTrack.textContent = t('⏳ Buffering…');
         dom.nowPlayingTrack.classList.add('status-line');
     } else if (phase === 'reconnecting') {
         dom.nowPlayingTrack.textContent =
-            `🔄 Reconnecting… (${state.reconnectAttempts}/${reconnectBudget()})`;
+            t(`🔄 Reconnecting… (${state.reconnectAttempts}/${reconnectBudget()})`);
         dom.nowPlayingTrack.classList.add('status-line');
     } else if (phase === 'error') {
-        dom.nowPlayingTrack.textContent = '⚠ Could not play this station';
+        dom.nowPlayingTrack.textContent = t('⚠ Could not play this station');
         dom.nowPlayingTrack.classList.add('status-error');
     } else if (phase === 'playing') {
         dom.nowPlayingTrack.textContent = state.lastTrackTitle ? '♪ ' + state.lastTrackTitle : '';
@@ -68,4 +69,16 @@ export function handleStreamDrop(reason) {
     if (!state.wantPlayback) return;
     console.warn('Stream interrupted:', reason);
     scheduleReconnect();
+}
+
+// Mirror the <audio> element's own stall / resume events in the status line, so
+// a stream that stops delivering data shows "Buffering…" instead of silence.
+// Only while playback is wanted: a deliberate stop must not flash the status.
+export function setupBufferingIndicator() {
+    dom.audioPlayer.addEventListener('waiting', () => {
+        if (state.wantPlayback && state.isPlaying) setConnectionState('buffering');
+    });
+    dom.audioPlayer.addEventListener('playing', () => {
+        if (state.wantPlayback && state.isPlaying) setConnectionState('playing');
+    });
 }

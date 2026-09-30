@@ -3,13 +3,14 @@
 
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
-import { HEART_FILLED_SVG, HEART_OUTLINE_SVG } from '../../core/constants.js';
+import { HEART_FILLED_SVG, HEART_OUTLINE_SVG, TRASH_ICON_SVG } from '../../core/icons.js';
 import { applyLogo } from '../../core/favicon.js';
 import { saveSetting } from '../../core/db.js';
 import { isFavorite, toggleFavorite } from './favorites.js';
 import { addToBlacklist, removeFromBlacklist, renderBlacklist } from './blacklist.js';
 import { selectStation } from '../player.js';
 import { toast } from '../../ui/ui.js';
+import { t } from '../../core/i18n.js';
 
 // --- List event delegation --------------------------------------------------
 // Rows used to carry their own listeners: one for the row plus one per action
@@ -149,7 +150,7 @@ export function renderStations(stations, container = dom.stationsList, append = 
                 // Hiding used to be permanent with no way back (short of the
                 // Settings list below). An immediate Undo covers the common
                 // case: a misclick right next to the favorite heart.
-                toast(`Hid ${station.name}`, 'info', 6000, {
+                toast(t(`Hid ${station.name}`), 'info', 6000, {
                     label: 'Undo',
                     onClick: () => {
                         removeFromBlacklist(station.stationuuid);
@@ -203,16 +204,16 @@ export function renderStations(stations, container = dom.stationsList, append = 
         favBtn.dataset.action = 'favorite';
         favBtn.setAttribute('aria-label',
             isFavorite(station.stationuuid)
-                ? `Remove ${station.name} from favorites`
-                : `Add ${station.name} to favorites`);
+                ? t(`Remove ${station.name} from favorites`)
+                : t(`Add ${station.name} to favorites`));
 
         // Blacklist button
         const blacklistBtn = document.createElement('button');
         blacklistBtn.className = 'action-btn blacklist-btn';
-        blacklistBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>`;
-        blacklistBtn.title = 'Hide station';
+        blacklistBtn.innerHTML = TRASH_ICON_SVG;
+        blacklistBtn.title = t('Hide station');
         blacklistBtn.dataset.action = 'blacklist';
-        blacklistBtn.setAttribute('aria-label', `Hide ${station.name}`);
+        blacklistBtn.setAttribute('aria-label', t(`Hide ${station.name}`));
 
         info.appendChild(name);
         info.appendChild(country);

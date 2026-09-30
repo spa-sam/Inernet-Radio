@@ -4,7 +4,8 @@
 
 import { state } from '../core/state.js';
 import { dom } from '../core/dom.js';
-import { COPY_ICON_SVG, CHECK_ICON_SVG } from '../core/constants.js';
+import { COPY_ICON_SVG, CHECK_ICON_SVG } from '../core/icons.js';
+import { t } from '../core/i18n.js';
 import { hasTauriApi } from '../core/util.js';
 import { saveSetting } from '../core/db.js';
 import { refreshVisualizerSize } from '../services/visualizer.js';
@@ -29,7 +30,7 @@ export function toast(message, type = 'info', duration = 3200, action = null) {
 
     const text = document.createElement('span');
     text.className = 'toast-text';
-    text.textContent = message;
+    text.textContent = t(message);
     el.appendChild(text);
 
     let dismissTimer = null;
@@ -43,7 +44,7 @@ export function toast(message, type = 'info', duration = 3200, action = null) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'toast-action';
-        btn.textContent = action.label;
+        btn.textContent = t(action.label);
         btn.addEventListener('click', () => {
             action.onClick();
             dismiss();
@@ -229,7 +230,7 @@ export function updateStationDetails(station) {
 export function updateBrandStatus() {
     if (!dom.brandStatus) return;
     const ver = state.appVersion ? `v${state.appVersion} · ` : '';
-    dom.brandStatus.textContent = `${ver}${state.isPlaying ? 'ON AIR' : 'OFF AIR'}`;
+    dom.brandStatus.textContent = `${ver}${t(state.isPlaying ? 'ON AIR' : 'OFF AIR')}`;
 }
 
 // Show the "Unverified" badge in the station header when the active stream's
@@ -587,12 +588,12 @@ export async function copyCurrentTrack() {
     // Brief "copied" confirmation on the button
     dom.trackCopyBtn.classList.add('copied');
     dom.trackCopyBtn.innerHTML = CHECK_ICON_SVG;
-    dom.trackCopyBtn.title = 'Copied';
+    dom.trackCopyBtn.title = t('Copied');
     clearTimeout(state.copyResetTimer);
     state.copyResetTimer = setTimeout(() => {
         dom.trackCopyBtn.classList.remove('copied');
         dom.trackCopyBtn.innerHTML = COPY_ICON_SVG;
-        dom.trackCopyBtn.title = 'Copy track name';
+        dom.trackCopyBtn.title = t('Copy track name');
     }, 1400);
 }
 

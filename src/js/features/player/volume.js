@@ -4,6 +4,7 @@ import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 import { FADE_DURATION } from '../../core/constants.js';
 import { saveSetting } from '../../core/db.js';
+import { t } from '../../core/i18n.js';
 
 // Read/write the active output level (0..1). On the PCM path loudness lives on
 // the master GainNode (the <audio> element is silent there); otherwise it is the
@@ -35,7 +36,7 @@ export function setVolume(volume, persist = true) {
     dom.volumeValueLabel.textContent = volume + '%';
     dom.volumeBar.classList.toggle('muted', volume === 0);
     dom.volumeMuteBtn.setAttribute('aria-pressed', String(volume === 0));
-    dom.volumeMuteBtn.setAttribute('aria-label', volume === 0 ? 'Unmute' : 'Mute');
+    dom.volumeMuteBtn.setAttribute('aria-label', t(volume === 0 ? 'Unmute' : 'Mute'));
 
     if (persist && state.settings.volume !== volume) {
         state.settings.volume = volume;

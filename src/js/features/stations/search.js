@@ -11,6 +11,7 @@ import { filterBlacklisted } from './blacklist.js';
 import { renderStations } from './render.js';
 import { localSearch, isSourceEnabled } from '../sources.js';
 import { setActivePreset } from '../presets.js';
+import { showEmpty, showLoading } from '../../core/placeholders.js';
 
 // Stable key for de-duplicating the same stream coming from several sources.
 function dedupKey(s) {
@@ -35,7 +36,7 @@ export async function searchStations(query, tag = '', append = false) {
     const rbEnabled = isSourceEnabled('radioBrowser');
 
     if (!append) {
-        dom.stationsList.innerHTML = '<div class="loading">Searching…</div>';
+        showLoading(dom.stationsList, 'Searching…');
         // Highlight the matching genre chip when searching by tag; clear otherwise.
         setActivePreset(tagVal);
         state.searchPage = {
@@ -59,7 +60,7 @@ export async function searchStations(query, tag = '', append = false) {
         if (rbEnabled) {
             await fetchRadioBrowserPage();
         } else if (local.length === 0) {
-            dom.stationsList.innerHTML = '<div class="loading-hint">No stations found</div>';
+            showEmpty(dom.stationsList, 'No stations found');
         }
     } else {
         if (!state.searchPage.active || state.searchPage.loading || state.searchPage.exhausted) return;
@@ -102,13 +103,16 @@ async function fetchRadioBrowserPage() {
             renderStations(fresh, dom.stationsList, true);
         }
         if (state.currentStationsList.length === 0) {
-            dom.stationsList.innerHTML = '<div class="loading-hint">No stations found</div>';
+            showEmpty(dom.stationsList, 'No stations found');
         }
     } catch (error) {
         state.searchPage.loading = false;
         console.error('Search error:', error);
         if (state.currentStationsList.length === 0) {
-            dom.stationsList.innerHTML = '<div class="loading-hint">Failed to load stations</div>';
+            showEmpty(dom.stationsList, 'Failed to load stations', {
+                label: 'Retry',
+                onClick: () => searchStations(state.searchPage.query, state.searchPage.tag)
+            });
         }
     }
 }

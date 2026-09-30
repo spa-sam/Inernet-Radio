@@ -333,3 +333,22 @@ export function cycleVisualizerStyle() {
     dom.visualizerStyleSelect.value = nextStyle;
     saveSetting('visualizerStyle', nextStyle);
 }
+
+// Stop drawing while the window is hidden (minimised or in the tray) and pick
+// the animation back up when it returns; nobody is looking at the canvas, and
+// an analyser loop costs CPU for nothing.
+export function setupVisualizerVisibility() {
+    let suspended = false;
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (state.animationId) {
+                suspended = true;
+                cancelAnimationFrame(state.animationId);
+                state.animationId = null;
+            }
+        } else if (suspended) {
+            suspended = false;
+            if (state.isPlaying) startVisualization();
+        }
+    });
+}

@@ -38,15 +38,29 @@
     --surface-2: #211e29;      /* hover / nested */
     --surface-3: #2a2733;      /* active nested */
 
+    /* Translucent overlays. Dark theme: darker insets and lighter highlights;
+       the light theme below flips both. */
+    --shade-s: rgba(0, 0, 0, 0.25);
+    --shade-m: rgba(0, 0, 0, 0.33);
+    --tint-1: rgba(255, 255, 255, 0.05);
+    --tint-2: rgba(255, 255, 255, 0.1);
+    --tint-3: rgba(255, 255, 255, 0.12);
+    --shadow-color: rgba(0, 0, 0, 0.5);
+    /* The spectrum canvas is drawn with neon colours and fading trails, so it
+       keeps a dark screen in both themes. */
+    --viz-bg: #15131a;
+
     --line: rgba(255, 255, 255, 0.07);
     --line-strong: rgba(255, 255, 255, 0.13);
 
     /* Accent - warm orange/red */
     --accent: #ff5a36;
-    --accent-2: #ff7a45;
-    --accent-deep: #e8431c;
-    --accent-soft: rgba(255, 90, 54, 0.14);
-    --accent-glow: rgba(255, 90, 54, 0.45);
+    /* Derived from --accent so a user-chosen accent recolours the whole UI. */
+    --accent-2: color-mix(in srgb, var(--accent) 80%, #ffb36b);
+    --accent-deep: color-mix(in srgb, var(--accent) 86%, #000);
+    --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+    --accent-border: color-mix(in srgb, var(--accent) 40%, transparent);
+    --accent-glow: color-mix(in srgb, var(--accent) 45%, transparent);
 
     /* Status colors */
     --live: #3ad07a;
@@ -109,6 +123,31 @@
         transform var(--transition-duration) var(--transition-ease);
 }
 
+/* Light theme. Set via <html data-theme="light"> (the app resolves "System"
+   from prefers-color-scheme in JS). Only surfaces, text and the translucent
+   overlay tokens change; the accent and status colours are shared. */
+:root[data-theme="light"] {
+    color-scheme: light;
+    --bg-0: #e9e7ee;
+    --bg-1: #f5f4f8;
+    --surface: #ffffff;
+    --surface-2: #f0eef5;
+    --surface-3: #e4e1ec;
+    --line: rgba(24, 20, 36, 0.1);
+    --line-strong: rgba(24, 20, 36, 0.18);
+    --shade-s: rgba(24, 20, 36, 0.06);
+    --shade-m: rgba(24, 20, 36, 0.09);
+    --tint-1: rgba(24, 20, 36, 0.05);
+    --tint-2: rgba(24, 20, 36, 0.1);
+    --tint-3: rgba(24, 20, 36, 0.14);
+    --shadow-color: rgba(24, 20, 36, 0.18);
+    --text: #1b1922;
+    --text-muted: #55516a;
+    --text-dim: #6b6780;
+    --bg-media: #e2dfea;
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+
 * {
     margin: 0;
     padding: 0;
@@ -128,8 +167,8 @@ body {
 ::-webkit-scrollbar { width: 7px; height: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--tint-2);
     border-radius: 10px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+::-webkit-scrollbar-thumb:hover { background: var(--tint-3); }
 

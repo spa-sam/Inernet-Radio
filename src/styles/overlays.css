@@ -28,7 +28,7 @@
     padding: 0.75rem 1.125rem;
     font-size: var(--fs-xl);
     font-weight: 500;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 8px 28px var(--shadow-color);
     max-width: 26.25rem;
     line-height: 1.35;
     animation: toast-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -46,7 +46,7 @@
     cursor: pointer;
     transition: var(--transition);
 }
-.toast-action:hover { background: rgba(255, 90, 54, 0.12); }
+.toast-action:hover { background: var(--accent-soft); }
 .toast.toast-out { animation: toast-out 0.25s ease forwards; }
 .toast-success { border-left-color: var(--live); }
 .toast-error { border-left-color: var(--accent-deep); }
@@ -85,8 +85,8 @@
 }
 .clear-history-btn svg { flex-shrink: 0; }
 .clear-history-btn:hover {
-    background: rgba(255, 90, 54, 0.12);
-    border-color: rgba(255, 90, 54, 0.4);
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
     color: var(--accent);
 }
 .track-history-list {
@@ -174,7 +174,25 @@
     transition: var(--transition);
 }
 .unhide-btn:hover {
-    background: rgba(255, 90, 54, 0.12);
-    border-color: rgba(255, 90, 54, 0.4);
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
     color: var(--accent);
 }
+
+/* Drop-a-file overlay (drag stations / backups onto the window) */
+.drop-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-soft);
+    border: 3px dashed var(--accent);
+    color: var(--text);
+    font-size: 1.1rem;
+    font-weight: 600;
+    pointer-events: none;
+    backdrop-filter: blur(3px);
+}
+.drop-overlay.hidden { display: none; }

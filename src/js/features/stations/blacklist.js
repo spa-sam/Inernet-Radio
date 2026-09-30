@@ -7,6 +7,7 @@
 import { state } from '../../core/state.js';
 import { dom } from '../../core/dom.js';
 import { saveBlacklist, deleteFromBlacklist } from '../../core/db.js';
+import { t } from '../../core/i18n.js';
 
 export function isBlacklisted(stationuuid) {
     return state.blacklist.some(item => item.stationuuid === stationuuid);
@@ -37,7 +38,7 @@ export function renderBlacklist() {
     if (state.blacklist.length === 0) {
         const hint = document.createElement('div');
         hint.className = 'loading-hint';
-        hint.textContent = 'No hidden stations';
+        hint.textContent = t('No hidden stations');
         dom.blacklistList.appendChild(hint);
         return;
     }
@@ -53,8 +54,8 @@ export function renderBlacklist() {
         const unhideBtn = document.createElement('button');
         unhideBtn.type = 'button';
         unhideBtn.className = 'unhide-btn';
-        unhideBtn.textContent = 'Unhide';
-        unhideBtn.setAttribute('aria-label', `Unhide ${entry.name || 'station'}`);
+        unhideBtn.textContent = t('Unhide');
+        unhideBtn.setAttribute('aria-label', t(`Unhide ${entry.name || 'station'}`));
         unhideBtn.addEventListener('click', async () => {
             await removeFromBlacklist(entry.stationuuid);
             renderBlacklist();

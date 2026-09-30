@@ -16,7 +16,7 @@
                 </div>
                 <div class="brand-text">
                     <span class="brand-name">radio</span>
-                    <span class="brand-status" id="brand-status" role="status">v1.0.0 · OFF AIR</span>
+                    <span class="brand-status" id="brand-status" role="status">OFF AIR</span>
                 </div>
             </div>
 
@@ -97,9 +97,9 @@
                                     <span class="insecure-badge hidden" id="insecure-badge" title="TLS certificate could not be verified">🔓 Unverified</span>
                                 </div>
                                 <div class="station-name-row">
-                                    <span id="station-name">Choose a radio station</span>
+                                    <span id="station-name" data-no-i18n>Choose a radio station</span>
                                 </div>
-                                <div class="station-sub" id="station-sub"></div>
+                                <div class="station-sub" id="station-sub" data-no-i18n></div>
                             </div>
                         </div>
 
@@ -108,7 +108,7 @@
                             <div class="track-card-thumb" id="track-card-thumb"></div>
                             <div class="track-card-body">
                                 <div class="track-card-label">Track</div>
-                                <div id="now-playing-track" class="now-playing-track" role="status" aria-live="polite"></div>
+                                <div id="now-playing-track" data-no-i18n class="now-playing-track" role="status" aria-live="polite"></div>
                             </div>
                             <button class="track-copy-btn" id="track-copy-btn" title="Copy track name" aria-label="Copy track name">
                                 <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" fill="currentColor"/></svg>
@@ -120,10 +120,10 @@
 
                         <!-- Meta tags (narrow view) -->
                         <div class="station-meta">
-                            <span id="meta-genre" class="meta-item hidden"></span>
-                            <span id="meta-bitrate" class="meta-item hidden"></span>
-                            <span id="meta-codec" class="meta-item hidden"></span>
-                            <span id="meta-country" class="meta-item hidden"></span>
+                            <span id="meta-genre" data-no-i18n class="meta-item hidden"></span>
+                            <span id="meta-bitrate" data-no-i18n class="meta-item hidden"></span>
+                            <span id="meta-codec" data-no-i18n class="meta-item hidden"></span>
+                            <span id="meta-country" data-no-i18n class="meta-item hidden"></span>
                         </div>
 
                         <!-- Transport: spectrum + buttons + time + volume -->
@@ -159,12 +159,12 @@
                             <div class="transport-info">
                                 <div class="transport-time">
                                     <span class="live-badge-sm" id="live-badge-sm">LIVE</span>
-                                    <span id="live-timer">00:00:00</span>
+                                    <span id="live-timer" data-no-i18n>00:00:00</span>
                                 </div>
-                                <div class="transport-quality" id="transport-quality">—</div>
+                                <div class="transport-quality" id="transport-quality" data-no-i18n>—</div>
                                 <div class="transport-rec hidden" id="rec-status">
                                     <span class="rec-dot"></span>
-                                    <span id="rec-status-text">REC 00:00:00 · 0.0 MB</span>
+                                    <span id="rec-status-text" data-no-i18n>REC 00:00:00 · 0.0 MB</span>
                                 </div>
                             </div>
 
@@ -206,7 +206,7 @@
                                 <button id="add-genre-btn" class="add-genre-btn hidden" title="Add as genre preset" aria-label="Add as genre preset">+</button>
                                 <button id="search-dropdown-btn" class="search-dropdown-btn" title="Browse genres &amp; collections" aria-label="Browse genres and collections" aria-expanded="false" aria-controls="search-dropdown">▾</button>
                                 <!-- Combined dropdown: suggestions + genres + collections -->
-                                <div class="search-dropdown hidden" id="search-dropdown"></div>
+                                <div class="search-dropdown hidden" id="search-dropdown" data-no-i18n></div>
                             </div>
                             <button id="filters-toggle-btn" class="filters-toggle-btn" aria-expanded="false" aria-controls="filters-panel">
                                 <svg viewBox="0 0 24 24" width="14" height="14" class="filter-icon"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" fill="currentColor"/></svg>
@@ -260,11 +260,12 @@
                                     </select>
                                 </div>
                             </div>
+                            <button type="button" id="filter-reset-btn" class="btn-secondary btn-small filter-reset">Reset filters</button>
                         </div>
 
                         <div class="presets" id="presets">
                             <!-- Editable genre chips are rendered here from settings.genrePresets -->
-                            <span class="preset-genres" id="preset-genres"></span>
+                            <span class="preset-genres" id="preset-genres" data-no-i18n></span>
                             <button class="preset-edit-btn" id="preset-edit-btn" title="Edit genres" aria-label="Edit genre presets" aria-pressed="false">✎</button>
                         </div>
 
@@ -279,7 +280,7 @@
                     <!-- Recently played stations -->
                     <div class="recently-played-section hidden" id="recently-played-section">
                         <h4>Recently Played</h4>
-                        <div class="recently-played-list" id="recently-played-list"></div>
+                        <div class="recently-played-list" id="recently-played-list" data-no-i18n></div>
                     </div>
 
                     <!-- Station list -->
@@ -288,7 +289,7 @@
                             <h4>All Stations</h4>
                             <span class="stations-count" id="stations-count"></span>
                         </div>
-                        <div id="stations-list" class="stations-list" role="group" aria-label="Stations">
+                        <div id="stations-list" data-no-i18n class="stations-list" role="group" aria-label="Stations">
                             <div class="loading-hint">Find radio stations using the search above</div>
                         </div>
                     </div>
@@ -300,7 +301,7 @@
         <div class="tab-content" id="tab-custom" role="tabpanel" aria-labelledby="tabbtn-custom" tabindex="0">
             <div class="custom-section">
                 <h3>Now Playing</h3>
-                <div id="current-station-info" class="current-station-info">
+                <div id="current-station-info" data-no-i18n class="current-station-info">
                     <div class="current-station-empty">No active station</div>
                 </div>
 
@@ -311,7 +312,7 @@
                         Clear
                     </button>
                 </div>
-                <div id="track-history-list" class="track-history-list">
+                <div id="track-history-list" data-no-i18n class="track-history-list">
                     <div class="loading-hint">History is empty</div>
                 </div>
 
@@ -327,7 +328,7 @@
                 </div>
 
                 <h3>My saved stations</h3>
-                <div id="custom-stations-list" class="stations-list">
+                <div id="custom-stations-list" data-no-i18n class="stations-list">
                     <div class="loading-hint">No custom stations yet</div>
                 </div>
             </div>
@@ -390,9 +391,57 @@
                     <input type="color" id="visualizer-color" value="#ff5a36">
                 </div>
 
+                <h3>Appearance</h3>
+                <div class="setting-item flex-between">
+                    <label for="theme-select">Theme</label>
+                    <select id="theme-select" class="custom-select">
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                        <option value="system">System</option>
+                    </select>
+                </div>
+                <div class="setting-item color-picker-item">
+                    <label for="accent-color">Accent color</label>
+                    <span class="color-picker-group">
+                        <input type="color" id="accent-color" value="#ff5a36">
+                        <button type="button" id="accent-reset-btn" class="btn-secondary btn-small" title="Reset" aria-label="Reset accent color">Reset</button>
+                    </span>
+                </div>
+                <div class="setting-item flex-between">
+                    <label for="language-select">Interface language</label>
+                    <select id="language-select" class="custom-select" data-no-i18n>
+                        <option value="auto">Auto</option>
+                        <option value="en">English</option>
+                        <option value="ru">Русский</option>
+                    </select>
+                </div>
+
+                <h3>Application</h3>
+                <div class="setting-item" data-desktop-only>
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="close-to-tray">
+                        <span class="checkmark"></span>
+                        Keep playing in the tray when the window is closed
+                    </label>
+                </div>
+                <div class="setting-item" data-desktop-only>
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="autostart">
+                        <span class="checkmark"></span>
+                        Launch at system startup
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="notify-songs">
+                        <span class="checkmark"></span>
+                        Song-change notifications
+                    </label>
+                </div>
+
                 <h3>Sources</h3>
                 <p class="settings-hint">Choose which catalogues the unified search includes. The dot shows whether each enabled source is reachable.</p>
-                <div class="sources-list" id="sources-list"></div>
+                <div class="sources-list" id="sources-list" data-no-i18n></div>
 
                 <h3>Equalizer</h3>
                 <div class="setting-item">
@@ -412,7 +461,7 @@
                         <option value="rock">Rock</option>
                     </select>
                 </div>
-                <div class="eq-bands" id="eq-bands"></div>
+                <div class="eq-bands" id="eq-bands" data-no-i18n></div>
                 <div class="setting-item">
                     <label class="checkbox-container">
                         <input type="checkbox" id="normalize-enabled">
@@ -468,14 +517,46 @@
                         Split recording into one file per track
                     </label>
                 </div>
+                <div class="setting-item" data-desktop-only>
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="record-ask-path" checked>
+                        <span class="checkmark"></span>
+                        Ask where to save each recording
+                    </label>
+                </div>
+                <div class="setting-item flex-between" data-desktop-only>
+                    <span>Recordings folder</span>
+                    <span class="folder-picker">
+                        <span id="record-dir-label" class="folder-label" data-no-i18n>—</span>
+                        <button type="button" id="record-dir-btn" class="btn-secondary btn-small">Choose…</button>
+                    </span>
+                </div>
+
+                <h3>Keyboard shortcuts</h3>
+                <dl class="shortcut-list">
+                    <div><dt><kbd>Space</kbd></dt><dd>Play / stop</dd></div>
+                    <div><dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Volume up / down</dd></div>
+                    <div><dt><kbd>M</kbd></dt><dd>Mute</dd></div>
+                    <div><dt><kbd>←</kbd> <kbd>→</kbd> / <kbd>P</kbd> <kbd>N</kbd></dt><dd>Previous / next station</dd></div>
+                    <div><dt><kbd>F</kbd></dt><dd>Toggle favorite</dd></div>
+                    <div><dt><kbd>/</kbd></dt><dd>Focus the search box</dd></div>
+                </dl>
+
+                <h3>Backup</h3>
+                <p class="settings-hint">Save all your favorites, stations, history, genres and settings to one file, or restore them from one.</p>
+                <div class="export-buttons">
+                    <button id="backup-export-btn">Export backup</button>
+                    <button id="backup-import-btn">Import backup</button>
+                    <input type="file" id="backup-file" accept=".json,application/json" style="display:none">
+                </div>
 
                 <h3>Blacklisted stations</h3>
                 <p class="settings-hint">Stations hidden from search results. Unhide to bring one back.</p>
-                <div id="blacklist-list" class="blacklist-list"></div>
+                <div id="blacklist-list" data-no-i18n class="blacklist-list"></div>
 
                 <h3>About</h3>
                 <p class="about-text">
-                    <strong>Internet Radio Player <span id="about-version">v1.0.0</span></strong><br>
+                    <strong>Internet Radio Player <span id="about-version" data-no-i18n>v1.0.0</span></strong><br>
                     A modern radio player with CORS bypass and HTTPS metadata support.<br>
                     Built with Tauri v2 + Rust + HTML5 Audio.
                 </p>

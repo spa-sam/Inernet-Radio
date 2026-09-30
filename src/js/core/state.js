@@ -109,6 +109,13 @@ export const state = {
         eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         normalizeEnabled: false,
         recordSplit: false,
+        recordAskPath: true,  // false + recordDir set = one-click recording, no dialog
+        recordDir: '',
+        theme: 'dark',        // 'system' | 'dark' | 'light'
+        accent: '#ff5a36',
+        language: 'auto',     // 'auto' | 'en' | 'ru'
+        closeToTray: false,
+        notifySongs: null,    // null = follow the OS permission (legacy behaviour)
         alarmEnabled: false,
         alarmTime: '07:00',
         genrePresets: null,

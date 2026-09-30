@@ -20,6 +20,8 @@ import { setConnectionState, scheduleReconnect, handleStreamDrop } from './conne
 import { fetchInitialMetadata } from './metadata.js';
 import { updateMediaSession } from './mediaSession.js';
 import { stopRecording } from './recording.js';
+import { PLAY_ICON_SVG, STOP_ICON_SVG } from '../../core/icons.js';
+import { t } from '../../core/i18n.js';
 
 // Shared playback success / error handlers
 function onPlaySuccess() {
@@ -318,7 +320,7 @@ export function stopStation() {
     dom.nowPlayingTrack.textContent = '';
     dom.nowPlayingTrack.classList.remove('marquee');
     if (dom.previewBtn) {
-        dom.previewBtn.textContent = 'Preview';
+        dom.previewBtn.textContent = t('Preview');
     }
 
     // Smoothly fade the audio out before stopping (visualizer keeps animating)
@@ -345,14 +347,14 @@ export async function togglePlay() {
 // Update play button appearance
 export function updatePlayButton() {
     if (state.isPlaying) {
-        dom.playIcon.innerHTML = `<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z" fill="currentColor"/></svg>`;
+        dom.playIcon.innerHTML = STOP_ICON_SVG;
         dom.playBtn.classList.add('playing');
     } else {
-        dom.playIcon.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
+        dom.playIcon.innerHTML = PLAY_ICON_SVG;
         dom.playBtn.classList.remove('playing');
     }
     // The icon is the only visual cue — mirror it in the accessible name.
-    dom.playBtn.setAttribute('aria-label', state.isPlaying ? 'Stop' : 'Play');
+    dom.playBtn.setAttribute('aria-label', t(state.isPlaying ? 'Stop' : 'Play'));
     // Drive the LIVE badges and the "ON AIR" indicator
     dom.appContainer.classList.toggle('playing', state.isPlaying);
     updateBrandStatus();
@@ -448,7 +450,7 @@ export function previewCustomUrl() {
     if (state.isPlaying && state.currentStation && state.currentStation.stationuuid &&
         state.currentStation.stationuuid.startsWith('preview_')) {
         stopStation();
-        dom.previewBtn.textContent = 'Preview';
+        dom.previewBtn.textContent = t('Preview');
         return;
     }
 
@@ -505,14 +507,14 @@ export function previewCustomUrl() {
         ensureAudioGraph();
         if (state.audioContext && state.audioContext.state === 'suspended') state.audioContext.resume();
         startVisualization();
-        dom.previewBtn.textContent = 'Stop';
+        dom.previewBtn.textContent = t('Stop');
     };
     const onPreviewError = (error) => {
         console.error('Preview error:', error);
         toast('Failed to play URL: ' + (error && error.message ? error.message : error), 'error');
         state.isPlaying = false;
         updatePlayButton();
-        dom.previewBtn.textContent = 'Preview';
+        dom.previewBtn.textContent = t('Preview');
     };
 
     const previewViaMediaElement = () => {

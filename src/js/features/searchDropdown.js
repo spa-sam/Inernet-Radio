@@ -7,6 +7,7 @@
 import { dom } from '../core/dom.js';
 import { getGenrePresets, updateAddGenreButton, setActivePreset } from './presets.js';
 import { searchStations, loadSomaFM, loadM3URadio, getM3UGenres } from './stations.js';
+import { t } from '../core/i18n.js';
 
 // Pick a genre/tag: reflect it into the search box (so the "+" add button can
 // appear) and run the unified search. Avoids dispatching an input event so the
@@ -26,7 +27,7 @@ function el(tag, cls, text) {
 
 function section(title) {
     const s = el('div', 'sd-section');
-    s.appendChild(el('div', 'sd-title', title));
+    s.appendChild(el('div', 'sd-title', t(title)));
     return s;
 }
 
@@ -63,7 +64,7 @@ function renderSuggestions(query) {
     const wrap = section('Suggestions');
     const q = (query || '').trim();
     if (q) {
-        wrap.appendChild(item(`Search “${q}”`, () => searchStations(q)));
+        wrap.appendChild(item(t(`Search “${q}”`), () => searchStations(q)));
         const list = document.getElementById('tag-list');
         if (list) {
             const ql = q.toLowerCase();
@@ -89,7 +90,7 @@ function renderGenres() {
 
 function renderCollections() {
     const wrap = section('Collections');
-    wrap.appendChild(item('SomaFM', () => { setActivePreset(''); loadSomaFM(); }, 'curated'));
+    wrap.appendChild(item('SomaFM', () => { setActivePreset(''); loadSomaFM(); }, t('curated')));
 
     const m3u = el('div', 'sd-m3u');
     m3u.appendChild(el('div', 'sd-empty', 'Loading M3U genres…'));

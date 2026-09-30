@@ -86,7 +86,7 @@
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 12px 30px var(--shadow-color);
 }
 .search-dropdown.hidden { display: none; }
 .sd-section { padding: 0.2rem 0; }
@@ -144,7 +144,7 @@
 .filters-toggle-btn.active { color: var(--accent); border-color: var(--accent); }
 
 .filters-panel {
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--shade-s);
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 0.75rem;
@@ -521,3 +521,46 @@
 }
 .action-btn.edit-btn:hover { color: var(--accent); background: var(--accent-soft); }
 
+
+.filter-reset { margin-top: 0.6rem; }
+
+/* Retry button inside an empty/error hint */
+.hint-action {
+    margin-top: 0.7rem;
+    padding: 0.35rem 0.9rem;
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--text);
+    font-size: var(--fs-md);
+    cursor: pointer;
+}
+.hint-action:hover { background: var(--accent); color: var(--on-accent); }
+
+/* Loading skeleton: placeholder rows shaped like station rows */
+.skeleton-list { display: flex; flex-direction: column; gap: 0.45rem; }
+.skeleton-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.7rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+}
+.skeleton-logo,
+.skeleton-lines i {
+    display: block;
+    background: linear-gradient(90deg, var(--tint-1) 25%, var(--tint-2) 50%, var(--tint-1) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s linear infinite;
+}
+.skeleton-logo { width: 40px; height: 40px; border-radius: var(--radius-sm); flex: none; }
+.skeleton-lines { display: flex; flex-direction: column; gap: 0.4rem; flex: 1; }
+.skeleton-lines i { height: 0.7rem; border-radius: 4px; }
+.skeleton-lines i:first-child { width: 55%; }
+.skeleton-lines i:last-child { width: 30%; }
+@keyframes skeleton-shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+    .skeleton-logo, .skeleton-lines i { animation: none; }
+}

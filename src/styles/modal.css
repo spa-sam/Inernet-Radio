@@ -23,7 +23,7 @@
     border-radius: var(--radius-lg);
     width: 100%;
     max-width: 420px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 24px 60px var(--shadow-color);
     overflow: hidden;
     animation: zoomIn 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
