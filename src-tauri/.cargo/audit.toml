@@ -1,0 +1,30 @@
+# cargo-audit configuration.
+# Read relative to the directory cargo audit runs in (src-tauri).
+#
+# Every ID below is a transitive advisory with no reachable impact on this
+# app, kept here with a justification instead of being silently suppressed.
+# Re-check each one whenever Tauri / its plugins are upgraded, in case an
+# advisory becomes reachable or a fixed version lands upstream.
+
+[advisories]
+ignore = [
+    # rsa: Marvin timing side-channel (no fixed version exists). Reaches the
+    # tree only through sqlx-mysql, which is never compiled: tauri-plugin-sql
+    # is used with the "sqlite" feature only, so the MySQL driver (and rsa) is
+    # feature-gated out of the build. No RSA operation ever runs.
+    "RUSTSEC-2023-0071",
+
+    # proc-macro-error: unmaintained. Build-time only, pulled by the GTK macro
+    # crates (gtk3-macros / glib-macros) deep in the Tauri desktop stack.
+    "RUSTSEC-2024-0370",
+
+    # zbus_names / zvariant / zvariant_derive: unmaintained. Transitive via
+    # tauri-plugin-opener -> zbus; nothing in this app calls them directly.
+    "RUSTSEC-2026-0371",
+    "RUSTSEC-2026-0370",
+    "RUSTSEC-2026-0372",
+
+    # glib 0.18.5: unsound VariantStrIter iterator. Transitive via the
+    # tauri -> wry -> webkit2gtk GUI stack; fixable only upstream in Tauri.
+    "RUSTSEC-2024-0429",
+]

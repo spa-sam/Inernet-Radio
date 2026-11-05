@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2
+
+- **Performance:** the `/tags` and `/languages` filter lists are now capped server-side (`order=stationcount&limit=150&hidebroken=true`) instead of downloading the full lists and slicing — a smaller payload and a faster startup.
+- **Dependencies:** Rust crates updated (Tauri 2.12.5 and its plugins, `rustls`, `tokio`, `minisign-verify` 0.3); `symphonia` deliberately kept on 0.5.
+- **Tooling:** `.cargo/audit.toml` documents the known, non-reachable transitive advisories (the `rsa`/MySQL path is never compiled; unmaintained GTK/zbus crates from the Tauri stack) so a future `cargo audit` stays green.
+
 ## 1.1.1
 
 - **Language:** Russian removed; Ukrainian added (Settings → Interface language).

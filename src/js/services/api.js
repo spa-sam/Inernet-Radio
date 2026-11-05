@@ -87,12 +87,19 @@ export async function loadFilterOptions() {
         console.warn('Could not load country list:', e);
     }
 
+    // Ask the server to order by station count and cap the result, so only the
+    // ~150 rows we show are transferred instead of the full tag/language list
+    // (several MB of JSON on every startup). The client-side filter/sort/slice
+    // stay as a defensive guard in case a mirror ignores the query params.
+    const TOP_LIMIT = 150;
+    const topQuery = `?order=stationcount&reverse=true&hidebroken=true&limit=${TOP_LIMIT}`;
+
     try {
-        const tags = await apiFetch('/tags');
+        const tags = await apiFetch(`/tags${topQuery}`);
         const names = tags
             .filter((t) => t.name && t.stationcount > 0)
             .sort((a, b) => b.stationcount - a.stationcount)
-            .slice(0, 150)
+            .slice(0, TOP_LIMIT)
             .map((t) => t.name);
         fill('tag-list', names);
     } catch (e) {
@@ -100,11 +107,11 @@ export async function loadFilterOptions() {
     }
 
     try {
-        const languages = await apiFetch('/languages');
+        const languages = await apiFetch(`/languages${topQuery}`);
         const names = languages
             .filter((l) => l.name && l.stationcount > 0)
             .sort((a, b) => b.stationcount - a.stationcount)
-            .slice(0, 150)
+            .slice(0, TOP_LIMIT)
             .map((l) => l.name);
         fill('language-list', names);
     } catch (e) {
